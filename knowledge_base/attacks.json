@@ -1,0 +1,1500 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "total_attacks": 100,
+    "last_update": "2026-02-08",
+    "author": "SIEM Africa Team",
+    "description": "Base de connaissances des attaques - Version initiale"
+  },
+
+  "categories": {
+    "recon": "Reconnaissance",
+    "auth": "Authentification",
+    "web": "Application Web",
+    "malware": "Malware",
+    "network": "Réseau",
+    "dos": "Déni de Service",
+    "exploit": "Exploitation"
+  },
+
+  "attacks": [
+    {
+      "sid": "2001219",
+      "name": "SSH Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Quelqu'un essaie de deviner le mot de passe SSH en testant des milliers de combinaisons automatiquement.",
+        "en": "Someone is trying to guess the SSH password by automatically testing thousands of combinations."
+      },
+      "risk": {
+        "fr": "Si l'attaquant réussit, il obtient un accès complet au serveur et peut voler des données, installer des malwares, ou utiliser le serveur pour d'autres attaques.",
+        "en": "If successful, the attacker gains full server access and can steal data, install malware, or use the server for other attacks."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP source", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les connexions récentes", "command": "sudo last -20"},
+        {"order": 3, "priority": "moyenne", "description": "Vérifier les logs SSH", "command": "sudo grep '{IP}' /var/log/auth.log | tail -50"},
+        {"order": 4, "priority": "moyenne", "description": "Installer fail2ban", "command": "sudo apt install fail2ban -y"}
+      ],
+      "references": {"mitre": "T1110.001", "cve": null}
+    },
+    {
+      "sid": "2001569",
+      "name": "FTP Brute Force",
+      "category": "auth",
+      "severity": 7,
+      "description": {
+        "fr": "Tentative de deviner le mot de passe FTP par force brute.",
+        "en": "Attempt to guess FTP password through brute force."
+      },
+      "risk": {
+        "fr": "Accès non autorisé aux fichiers du serveur FTP, vol ou modification de données.",
+        "en": "Unauthorized access to FTP server files, data theft or modification."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP source", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier les logs FTP", "command": "sudo grep '{IP}' /var/log/vsftpd.log | tail -50"},
+        {"order": 3, "priority": "basse", "description": "Désactiver FTP si non utilisé", "command": "sudo systemctl stop vsftpd"}
+      ],
+      "references": {"mitre": "T1110.001", "cve": null}
+    },
+    {
+      "sid": "2002106",
+      "name": "RDP Brute Force",
+      "category": "auth",
+      "severity": 9,
+      "description": {
+        "fr": "Tentative de deviner le mot de passe du Bureau à distance Windows (RDP).",
+        "en": "Attempt to guess Windows Remote Desktop (RDP) password."
+      },
+      "risk": {
+        "fr": "Accès complet au système Windows, installation de ransomware, vol de données.",
+        "en": "Full access to Windows system, ransomware installation, data theft."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP au pare-feu", "command": "netsh advfirewall firewall add rule name=\"Block RDP Attacker\" dir=in action=block remoteip={IP}"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les connexions", "command": "Get-EventLog -LogName Security -InstanceId 4625 -Newest 50"},
+        {"order": 3, "priority": "moyenne", "description": "Activer NLA", "command": "Activer Network Level Authentication dans les paramètres RDP"}
+      ],
+      "references": {"mitre": "T1110.001", "cve": null}
+    },
+    {
+      "sid": "2010935",
+      "name": "Nmap SYN Scan",
+      "category": "recon",
+      "severity": 4,
+      "description": {
+        "fr": "Quelqu'un scanne vos ports pour découvrir quels services sont ouverts sur votre réseau.",
+        "en": "Someone is scanning your ports to discover which services are open on your network."
+      },
+      "risk": {
+        "fr": "Phase de reconnaissance avant une attaque. L'attaquant identifie les services vulnérables.",
+        "en": "Reconnaissance phase before an attack. Attacker identifies vulnerable services."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Surveiller l'IP", "command": "sudo tcpdump -i any host {IP} -w capture.pcap"},
+        {"order": 2, "priority": "basse", "description": "Bloquer si répétitif", "command": "sudo ufw deny from {IP}"}
+      ],
+      "references": {"mitre": "T1046", "cve": null}
+    },
+    {
+      "sid": "2010936",
+      "name": "Nmap UDP Scan",
+      "category": "recon",
+      "severity": 4,
+      "description": {
+        "fr": "Scan des ports UDP pour identifier les services comme DNS, SNMP, etc.",
+        "en": "UDP port scan to identify services like DNS, SNMP, etc."
+      },
+      "risk": {
+        "fr": "Découverte de services UDP souvent mal sécurisés.",
+        "en": "Discovery of UDP services often poorly secured."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Surveiller l'activité", "command": "sudo tcpdump -i any udp and host {IP}"},
+        {"order": 2, "priority": "basse", "description": "Bloquer si nécessaire", "command": "sudo ufw deny from {IP}"}
+      ],
+      "references": {"mitre": "T1046", "cve": null}
+    },
+    {
+      "sid": "2010937",
+      "name": "Nmap OS Fingerprinting",
+      "category": "recon",
+      "severity": 5,
+      "description": {
+        "fr": "Tentative d'identifier le système d'exploitation de vos machines.",
+        "en": "Attempt to identify the operating system of your machines."
+      },
+      "risk": {
+        "fr": "Permet à l'attaquant de choisir des exploits spécifiques à votre OS.",
+        "en": "Allows attacker to choose exploits specific to your OS."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "basse", "description": "Masquer les bannières", "command": "Configurer les services pour masquer les versions"}
+      ],
+      "references": {"mitre": "T1082", "cve": null}
+    },
+    {
+      "sid": "2100366",
+      "name": "ICMP Ping Sweep",
+      "category": "recon",
+      "severity": 2,
+      "description": {
+        "fr": "Scan ping pour découvrir les machines actives sur le réseau.",
+        "en": "Ping scan to discover active machines on the network."
+      },
+      "risk": {
+        "fr": "Première étape de reconnaissance, faible risque immédiat.",
+        "en": "First reconnaissance step, low immediate risk."
+      },
+      "actions": [
+        {"order": 1, "priority": "basse", "description": "Surveiller", "command": "Noter l'IP pour surveillance future"}
+      ],
+      "references": {"mitre": "T1018", "cve": null}
+    },
+    {
+      "sid": "2100538",
+      "name": "SQL Injection Attempt",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Tentative d'injection SQL pour accéder ou modifier la base de données via l'application web.",
+        "en": "SQL injection attempt to access or modify database through web application."
+      },
+      "risk": {
+        "fr": "Vol de toutes les données de la base, modification ou suppression de données, accès administrateur.",
+        "en": "Theft of all database data, data modification or deletion, admin access."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les logs web", "command": "sudo grep '{IP}' /var/log/apache2/access.log | tail -100"},
+        {"order": 3, "priority": "haute", "description": "Vérifier la base de données", "command": "Vérifier les modifications récentes dans la BDD"},
+        {"order": 4, "priority": "moyenne", "description": "Activer WAF", "command": "sudo apt install libapache2-mod-security2"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2100539",
+      "name": "SQL Injection - UNION Based",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Injection SQL utilisant UNION pour extraire des données de plusieurs tables.",
+        "en": "SQL injection using UNION to extract data from multiple tables."
+      },
+      "risk": {
+        "fr": "Extraction massive de données sensibles.",
+        "en": "Massive extraction of sensitive data."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer immédiatement", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Analyser les requêtes", "command": "sudo grep -i 'union' /var/log/apache2/access.log"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2100540",
+      "name": "SQL Injection - Boolean Based",
+      "category": "web",
+      "severity": 8,
+      "description": {
+        "fr": "Injection SQL basée sur des conditions booléennes pour extraire des informations.",
+        "en": "Boolean-based SQL injection to extract information."
+      },
+      "risk": {
+        "fr": "Extraction lente mais efficace de données.",
+        "en": "Slow but effective data extraction."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Auditer l'application", "command": "Vérifier les paramètres d'entrée de l'application"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2101411",
+      "name": "XSS - Cross Site Scripting",
+      "category": "web",
+      "severity": 7,
+      "description": {
+        "fr": "Tentative d'injection de code JavaScript malveillant dans une page web.",
+        "en": "Attempt to inject malicious JavaScript code into a web page."
+      },
+      "risk": {
+        "fr": "Vol de sessions utilisateurs, redirection vers sites malveillants, vol de cookies.",
+        "en": "User session theft, redirect to malicious sites, cookie theft."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier les logs", "command": "sudo grep '<script' /var/log/apache2/access.log"},
+        {"order": 3, "priority": "moyenne", "description": "Activer CSP", "command": "Configurer Content-Security-Policy dans Apache/Nginx"}
+      ],
+      "references": {"mitre": "T1059.007", "cve": null}
+    },
+    {
+      "sid": "2101412",
+      "name": "XSS - Stored",
+      "category": "web",
+      "severity": 8,
+      "description": {
+        "fr": "XSS persistant stocké dans la base de données, affecte tous les visiteurs.",
+        "en": "Persistent XSS stored in database, affects all visitors."
+      },
+      "risk": {
+        "fr": "Tous les utilisateurs du site sont potentiellement compromis.",
+        "en": "All site users are potentially compromised."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Scanner la BDD", "command": "Rechercher les scripts malveillants dans la base de données"}
+      ],
+      "references": {"mitre": "T1059.007", "cve": null}
+    },
+    {
+      "sid": "2102925",
+      "name": "Directory Traversal",
+      "category": "web",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative d'accéder à des fichiers en dehors du répertoire web (../../etc/passwd).",
+        "en": "Attempt to access files outside web directory (../../etc/passwd)."
+      },
+      "risk": {
+        "fr": "Lecture de fichiers sensibles comme /etc/passwd, fichiers de configuration.",
+        "en": "Reading sensitive files like /etc/passwd, configuration files."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier les accès", "command": "sudo grep '\\.\\.' /var/log/apache2/access.log"}
+      ],
+      "references": {"mitre": "T1083", "cve": null}
+    },
+    {
+      "sid": "2102926",
+      "name": "Local File Inclusion (LFI)",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Inclusion de fichiers locaux du serveur via l'application web.",
+        "en": "Local file inclusion through web application."
+      },
+      "risk": {
+        "fr": "Lecture de fichiers sensibles, possibilité d'exécution de code.",
+        "en": "Reading sensitive files, possible code execution."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer immédiatement", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Auditer l'application", "command": "Vérifier les paramètres include/require"}
+      ],
+      "references": {"mitre": "T1083", "cve": null}
+    },
+    {
+      "sid": "2102927",
+      "name": "Remote File Inclusion (RFI)",
+      "category": "web",
+      "severity": 10,
+      "description": {
+        "fr": "Inclusion de fichiers distants malveillants - CRITIQUE.",
+        "en": "Remote malicious file inclusion - CRITICAL."
+      },
+      "risk": {
+        "fr": "Exécution de code arbitraire sur le serveur, compromission totale.",
+        "en": "Arbitrary code execution on server, total compromise."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer IMMÉDIATEMENT", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Isoler le serveur", "command": "Déconnecter du réseau si compromis"},
+        {"order": 3, "priority": "haute", "description": "Vérifier les processus", "command": "ps aux | grep -v root"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2103128",
+      "name": "Command Injection",
+      "category": "web",
+      "severity": 10,
+      "description": {
+        "fr": "Injection de commandes système via l'application web - CRITIQUE.",
+        "en": "System command injection through web application - CRITICAL."
+      },
+      "risk": {
+        "fr": "Exécution de n'importe quelle commande sur le serveur.",
+        "en": "Execution of any command on the server."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer IMMÉDIATEMENT", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les processus", "command": "ps aux"},
+        {"order": 3, "priority": "haute", "description": "Vérifier les connexions", "command": "netstat -tulpn"}
+      ],
+      "references": {"mitre": "T1059", "cve": null}
+    },
+    {
+      "sid": "2008578",
+      "name": "Malware Trojan Generic",
+      "category": "malware",
+      "severity": 9,
+      "description": {
+        "fr": "Communication détectée avec un serveur de commande et contrôle (C2) de trojan.",
+        "en": "Communication detected with trojan command and control (C2) server."
+      },
+      "risk": {
+        "fr": "Machine compromise, vol de données, utilisation pour attaquer d'autres systèmes.",
+        "en": "Compromised machine, data theft, use to attack other systems."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler la machine", "command": "Déconnecter du réseau immédiatement"},
+        {"order": 2, "priority": "haute", "description": "Bloquer l'IP C2", "command": "sudo ufw deny out to {IP}"},
+        {"order": 3, "priority": "haute", "description": "Scanner antivirus", "command": "clamscan -r /"}
+      ],
+      "references": {"mitre": "T1071", "cve": null}
+    },
+    {
+      "sid": "2008579",
+      "name": "Ransomware Activity",
+      "category": "malware",
+      "severity": 10,
+      "description": {
+        "fr": "Activité de ransomware détectée - URGENCE MAXIMALE.",
+        "en": "Ransomware activity detected - MAXIMUM URGENCY."
+      },
+      "risk": {
+        "fr": "Chiffrement de tous les fichiers, demande de rançon, perte de données.",
+        "en": "Encryption of all files, ransom demand, data loss."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "ISOLER IMMÉDIATEMENT", "command": "Débrancher le câble réseau MAINTENANT"},
+        {"order": 2, "priority": "haute", "description": "Éteindre la machine", "command": "Ne PAS redémarrer - contacter un expert"},
+        {"order": 3, "priority": "haute", "description": "Alerter la direction", "command": "Incident de sécurité majeur"}
+      ],
+      "references": {"mitre": "T1486", "cve": null}
+    },
+    {
+      "sid": "2008580",
+      "name": "Cryptominer Detected",
+      "category": "malware",
+      "severity": 7,
+      "description": {
+        "fr": "Logiciel de minage de cryptomonnaie détecté.",
+        "en": "Cryptocurrency mining software detected."
+      },
+      "risk": {
+        "fr": "Consommation excessive de ressources, factures d'électricité, ralentissement.",
+        "en": "Excessive resource consumption, electricity bills, slowdown."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Identifier le processus", "command": "top -c | head -20"},
+        {"order": 2, "priority": "haute", "description": "Tuer le processus", "command": "sudo kill -9 <PID>"},
+        {"order": 3, "priority": "moyenne", "description": "Bloquer les pools", "command": "sudo ufw deny out to {IP}"}
+      ],
+      "references": {"mitre": "T1496", "cve": null}
+    },
+    {
+      "sid": "2008581",
+      "name": "Botnet C2 Communication",
+      "category": "malware",
+      "severity": 9,
+      "description": {
+        "fr": "Communication avec un serveur de botnet détectée.",
+        "en": "Botnet server communication detected."
+      },
+      "risk": {
+        "fr": "Machine zombie utilisée pour DDoS, spam, ou autres attaques.",
+        "en": "Zombie machine used for DDoS, spam, or other attacks."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler la machine", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Bloquer le C2", "command": "sudo ufw deny out to {IP}"},
+        {"order": 3, "priority": "haute", "description": "Analyser", "command": "netstat -tulpn | grep ESTABLISHED"}
+      ],
+      "references": {"mitre": "T1071", "cve": null}
+    },
+    {
+      "sid": "2008582",
+      "name": "Backdoor Detected",
+      "category": "malware",
+      "severity": 10,
+      "description": {
+        "fr": "Porte dérobée détectée permettant un accès non autorisé.",
+        "en": "Backdoor detected allowing unauthorized access."
+      },
+      "risk": {
+        "fr": "Accès permanent pour l'attaquant même après nettoyage.",
+        "en": "Permanent access for attacker even after cleanup."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler IMMÉDIATEMENT", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les ports", "command": "netstat -tulpn"},
+        {"order": 3, "priority": "haute", "description": "Vérifier crontab", "command": "crontab -l && cat /etc/crontab"}
+      ],
+      "references": {"mitre": "T1505", "cve": null}
+    },
+    {
+      "sid": "2003068",
+      "name": "ARP Spoofing",
+      "category": "network",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative d'usurpation ARP pour intercepter le trafic réseau.",
+        "en": "ARP spoofing attempt to intercept network traffic."
+      },
+      "risk": {
+        "fr": "Interception de tout le trafic, vol de mots de passe, attaque Man-in-the-Middle.",
+        "en": "All traffic interception, password theft, Man-in-the-Middle attack."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Identifier l'attaquant", "command": "arp -a"},
+        {"order": 2, "priority": "haute", "description": "Configurer ARP statique", "command": "arp -s <IP_GATEWAY> <MAC_GATEWAY>"},
+        {"order": 3, "priority": "moyenne", "description": "Activer DAI", "command": "Configurer Dynamic ARP Inspection sur le switch"}
+      ],
+      "references": {"mitre": "T1557.002", "cve": null}
+    },
+    {
+      "sid": "2003069",
+      "name": "DNS Spoofing",
+      "category": "network",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de falsification des réponses DNS.",
+        "en": "DNS response spoofing attempt."
+      },
+      "risk": {
+        "fr": "Redirection vers de faux sites, vol d'identifiants.",
+        "en": "Redirect to fake sites, credential theft."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Vérifier les DNS", "command": "cat /etc/resolv.conf"},
+        {"order": 2, "priority": "haute", "description": "Utiliser DNS sécurisés", "command": "Configurer 8.8.8.8 ou 1.1.1.1"},
+        {"order": 3, "priority": "moyenne", "description": "Activer DNSSEC", "command": "Configurer DNSSEC"}
+      ],
+      "references": {"mitre": "T1557.001", "cve": null}
+    },
+    {
+      "sid": "2003070",
+      "name": "DHCP Spoofing",
+      "category": "network",
+      "severity": 7,
+      "description": {
+        "fr": "Faux serveur DHCP détecté sur le réseau.",
+        "en": "Rogue DHCP server detected on network."
+      },
+      "risk": {
+        "fr": "Attribution de fausses configurations réseau, interception du trafic.",
+        "en": "False network configuration assignment, traffic interception."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Identifier le serveur", "command": "sudo nmap --script broadcast-dhcp-discover"},
+        {"order": 2, "priority": "haute", "description": "Activer DHCP Snooping", "command": "Configurer sur le switch"}
+      ],
+      "references": {"mitre": "T1557", "cve": null}
+    },
+    {
+      "sid": "2003071",
+      "name": "VLAN Hopping",
+      "category": "network",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de saut entre VLANs pour accéder à des réseaux isolés.",
+        "en": "VLAN hopping attempt to access isolated networks."
+      },
+      "risk": {
+        "fr": "Accès à des réseaux supposés isolés (serveurs, management).",
+        "en": "Access to supposedly isolated networks (servers, management)."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Vérifier la config switch", "command": "Désactiver DTP sur les ports access"},
+        {"order": 2, "priority": "haute", "description": "Configurer Native VLAN", "command": "Utiliser un VLAN non-utilisé comme native"}
+      ],
+      "references": {"mitre": "T1599", "cve": null}
+    },
+    {
+      "sid": "2400000",
+      "name": "SYN Flood Attack",
+      "category": "dos",
+      "severity": 8,
+      "description": {
+        "fr": "Attaque par inondation SYN pour saturer le serveur.",
+        "en": "SYN flood attack to overwhelm the server."
+      },
+      "risk": {
+        "fr": "Service inaccessible, déni de service.",
+        "en": "Service unavailable, denial of service."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Activer SYN cookies", "command": "sudo sysctl -w net.ipv4.tcp_syncookies=1"},
+        {"order": 2, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 3, "priority": "moyenne", "description": "Limiter les connexions", "command": "sudo iptables -A INPUT -p tcp --syn -m limit --limit 1/s -j ACCEPT"}
+      ],
+      "references": {"mitre": "T1499.001", "cve": null}
+    },
+    {
+      "sid": "2400001",
+      "name": "UDP Flood Attack",
+      "category": "dos",
+      "severity": 8,
+      "description": {
+        "fr": "Attaque par inondation UDP.",
+        "en": "UDP flood attack."
+      },
+      "risk": {
+        "fr": "Saturation de la bande passante, service inaccessible.",
+        "en": "Bandwidth saturation, service unavailable."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Limiter UDP", "command": "sudo iptables -A INPUT -p udp -m limit --limit 10/s -j ACCEPT"}
+      ],
+      "references": {"mitre": "T1499.001", "cve": null}
+    },
+    {
+      "sid": "2400002",
+      "name": "ICMP Flood (Ping of Death)",
+      "category": "dos",
+      "severity": 6,
+      "description": {
+        "fr": "Attaque par inondation ICMP.",
+        "en": "ICMP flood attack."
+      },
+      "risk": {
+        "fr": "Saturation réseau, ralentissement.",
+        "en": "Network saturation, slowdown."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Limiter ICMP", "command": "sudo iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/s -j ACCEPT"},
+        {"order": 2, "priority": "basse", "description": "Bloquer ICMP", "command": "sudo ufw deny proto icmp from {IP}"}
+      ],
+      "references": {"mitre": "T1499.001", "cve": null}
+    },
+    {
+      "sid": "2400003",
+      "name": "Slowloris Attack",
+      "category": "dos",
+      "severity": 7,
+      "description": {
+        "fr": "Attaque Slowloris maintenant des connexions HTTP ouvertes.",
+        "en": "Slowloris attack keeping HTTP connections open."
+      },
+      "risk": {
+        "fr": "Serveur web inaccessible, épuisement des connexions.",
+        "en": "Web server unavailable, connection exhaustion."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Installer mod_reqtimeout", "command": "sudo a2enmod reqtimeout"},
+        {"order": 2, "priority": "haute", "description": "Configurer timeouts", "command": "RequestReadTimeout header=20-40,MinRate=500"},
+        {"order": 3, "priority": "moyenne", "description": "Utiliser un reverse proxy", "command": "Configurer Nginx devant Apache"}
+      ],
+      "references": {"mitre": "T1499.002", "cve": null}
+    },
+    {
+      "sid": "2400004",
+      "name": "HTTP Flood",
+      "category": "dos",
+      "severity": 7,
+      "description": {
+        "fr": "Attaque par inondation de requêtes HTTP.",
+        "en": "HTTP request flood attack."
+      },
+      "risk": {
+        "fr": "Site web inaccessible.",
+        "en": "Website unavailable."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Activer rate limiting", "command": "Configurer fail2ban pour Apache/Nginx"},
+        {"order": 2, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"}
+      ],
+      "references": {"mitre": "T1499.002", "cve": null}
+    },
+    {
+      "sid": "2024897",
+      "name": "Log4j Exploitation (CVE-2021-44228)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Tentative d'exploitation de la vulnérabilité Log4j - CRITIQUE.",
+        "en": "Log4j vulnerability exploitation attempt - CRITICAL."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance, compromission totale du serveur.",
+        "en": "Remote code execution, total server compromise."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer IMMÉDIATEMENT", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Patcher Log4j", "command": "Mettre à jour vers Log4j 2.17.0+"},
+        {"order": 3, "priority": "haute", "description": "Scanner les logs", "command": "grep -r 'jndi:' /var/log/"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2021-44228"}
+    },
+    {
+      "sid": "2024898",
+      "name": "EternalBlue Exploit (MS17-010)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Tentative d'exploitation EternalBlue sur SMB - CRITIQUE.",
+        "en": "EternalBlue SMB exploitation attempt - CRITICAL."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance sur Windows, propagation de ransomware.",
+        "en": "Remote code execution on Windows, ransomware propagation."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer SMB externe", "command": "Bloquer port 445 en entrée"},
+        {"order": 2, "priority": "haute", "description": "Patcher Windows", "command": "Installer MS17-010"},
+        {"order": 3, "priority": "haute", "description": "Isoler si compromis", "command": "Déconnecter du réseau"}
+      ],
+      "references": {"mitre": "T1210", "cve": "CVE-2017-0144"}
+    },
+    {
+      "sid": "2024899",
+      "name": "Heartbleed (CVE-2014-0160)",
+      "category": "exploit",
+      "severity": 9,
+      "description": {
+        "fr": "Tentative d'exploitation Heartbleed sur OpenSSL.",
+        "en": "Heartbleed exploitation attempt on OpenSSL."
+      },
+      "risk": {
+        "fr": "Fuite de mémoire serveur, vol de clés privées et mots de passe.",
+        "en": "Server memory leak, private keys and password theft."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Vérifier OpenSSL", "command": "openssl version"},
+        {"order": 2, "priority": "haute", "description": "Mettre à jour", "command": "sudo apt update && sudo apt upgrade openssl"},
+        {"order": 3, "priority": "haute", "description": "Renouveler certificats", "command": "Régénérer tous les certificats SSL"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2014-0160"}
+    },
+    {
+      "sid": "2024900",
+      "name": "Shellshock (CVE-2014-6271)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Tentative d'exploitation Shellshock sur Bash.",
+        "en": "Shellshock exploitation attempt on Bash."
+      },
+      "risk": {
+        "fr": "Exécution de commandes arbitraires via CGI.",
+        "en": "Arbitrary command execution via CGI."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Mettre à jour Bash", "command": "sudo apt update && sudo apt upgrade bash"},
+        {"order": 3, "priority": "moyenne", "description": "Désactiver CGI", "command": "Désactiver mod_cgi si non utilisé"}
+      ],
+      "references": {"mitre": "T1059.004", "cve": "CVE-2014-6271"}
+    },
+    {
+      "sid": "2024901",
+      "name": "ProxyLogon (CVE-2021-26855)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Exploitation ProxyLogon sur Microsoft Exchange.",
+        "en": "ProxyLogon exploitation on Microsoft Exchange."
+      },
+      "risk": {
+        "fr": "Accès aux emails, exécution de code sur le serveur Exchange.",
+        "en": "Email access, code execution on Exchange server."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Patcher Exchange", "command": "Installer les mises à jour Microsoft"},
+        {"order": 2, "priority": "haute", "description": "Scanner les webshells", "command": "Rechercher les fichiers .aspx suspects"},
+        {"order": 3, "priority": "haute", "description": "Vérifier les comptes", "command": "Auditer les nouveaux comptes créés"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2021-26855"}
+    },
+    {
+      "sid": "2001668",
+      "name": "Telnet Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de brute force sur le service Telnet.",
+        "en": "Brute force attempt on Telnet service."
+      },
+      "risk": {
+        "fr": "Accès non autorisé via protocole non chiffré.",
+        "en": "Unauthorized access via unencrypted protocol."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Désactiver Telnet", "command": "sudo systemctl stop telnetd && sudo systemctl disable telnetd"},
+        {"order": 3, "priority": "moyenne", "description": "Utiliser SSH", "command": "Migrer vers SSH"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001669",
+      "name": "SMTP Brute Force",
+      "category": "auth",
+      "severity": 7,
+      "description": {
+        "fr": "Tentative de brute force sur le serveur mail SMTP.",
+        "en": "Brute force attempt on SMTP mail server."
+      },
+      "risk": {
+        "fr": "Utilisation du serveur pour envoyer du spam.",
+        "en": "Server use for sending spam."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Configurer fail2ban", "command": "sudo fail2ban-client set postfix-auth banip {IP}"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001670",
+      "name": "MySQL Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de brute force sur MySQL.",
+        "en": "Brute force attempt on MySQL."
+      },
+      "risk": {
+        "fr": "Accès à la base de données, vol ou destruction de données.",
+        "en": "Database access, data theft or destruction."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP} to any port 3306"},
+        {"order": 2, "priority": "haute", "description": "Vérifier les accès", "command": "sudo grep 'Access denied' /var/log/mysql/error.log"},
+        {"order": 3, "priority": "moyenne", "description": "Restreindre l'accès", "command": "Configurer MySQL pour écouter uniquement localhost"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001671",
+      "name": "PostgreSQL Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de brute force sur PostgreSQL.",
+        "en": "Brute force attempt on PostgreSQL."
+      },
+      "risk": {
+        "fr": "Accès non autorisé à la base de données.",
+        "en": "Unauthorized database access."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP} to any port 5432"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier pg_hba.conf", "command": "Restreindre les accès dans pg_hba.conf"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001672",
+      "name": "LDAP Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de brute force sur le service LDAP/Active Directory.",
+        "en": "Brute force attempt on LDAP/Active Directory service."
+      },
+      "risk": {
+        "fr": "Compromission de comptes du domaine.",
+        "en": "Domain account compromise."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "Bloquer au pare-feu"},
+        {"order": 2, "priority": "haute", "description": "Activer le verrouillage", "command": "Configurer la politique de verrouillage de compte"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001673",
+      "name": "VNC Brute Force",
+      "category": "auth",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de brute force sur VNC.",
+        "en": "Brute force attempt on VNC."
+      },
+      "risk": {
+        "fr": "Accès graphique complet au système.",
+        "en": "Full graphical access to the system."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP} to any port 5900"},
+        {"order": 2, "priority": "moyenne", "description": "Utiliser VPN", "command": "Accéder à VNC uniquement via VPN"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2010938",
+      "name": "Service Version Detection",
+      "category": "recon",
+      "severity": 3,
+      "description": {
+        "fr": "Scan pour détecter les versions des services.",
+        "en": "Scan to detect service versions."
+      },
+      "risk": {
+        "fr": "Identification de logiciels vulnérables.",
+        "en": "Identification of vulnerable software."
+      },
+      "actions": [
+        {"order": 1, "priority": "basse", "description": "Masquer les bannières", "command": "Configurer les services pour masquer les versions"}
+      ],
+      "references": {"mitre": "T1046", "cve": null}
+    },
+    {
+      "sid": "2010939",
+      "name": "Web Application Scan",
+      "category": "recon",
+      "severity": 5,
+      "description": {
+        "fr": "Scan automatisé d'application web (Nikto, etc.).",
+        "en": "Automated web application scan (Nikto, etc.)."
+      },
+      "risk": {
+        "fr": "Découverte de vulnérabilités web.",
+        "en": "Web vulnerability discovery."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier les logs", "command": "sudo grep '{IP}' /var/log/apache2/access.log | wc -l"}
+      ],
+      "references": {"mitre": "T1595", "cve": null}
+    },
+    {
+      "sid": "2010940",
+      "name": "WordPress Scan",
+      "category": "recon",
+      "severity": 5,
+      "description": {
+        "fr": "Scan de vulnérabilités WordPress (WPScan).",
+        "en": "WordPress vulnerability scan (WPScan)."
+      },
+      "risk": {
+        "fr": "Découverte de plugins vulnérables, utilisateurs.",
+        "en": "Discovery of vulnerable plugins, users."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Mettre à jour WordPress", "command": "Mettre à jour WP, thèmes et plugins"},
+        {"order": 3, "priority": "basse", "description": "Masquer wp-admin", "command": "Utiliser un plugin de sécurité"}
+      ],
+      "references": {"mitre": "T1595", "cve": null}
+    },
+    {
+      "sid": "2101413",
+      "name": "CSRF Attack",
+      "category": "web",
+      "severity": 6,
+      "description": {
+        "fr": "Tentative d'attaque CSRF (Cross-Site Request Forgery).",
+        "en": "CSRF (Cross-Site Request Forgery) attack attempt."
+      },
+      "risk": {
+        "fr": "Actions non autorisées au nom d'un utilisateur légitime.",
+        "en": "Unauthorized actions on behalf of legitimate user."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Vérifier les tokens CSRF", "command": "Implémenter des tokens CSRF dans l'application"},
+        {"order": 2, "priority": "basse", "description": "Vérifier Referer", "command": "Valider l'en-tête Referer"}
+      ],
+      "references": {"mitre": "T1185", "cve": null}
+    },
+    {
+      "sid": "2101414",
+      "name": "XML External Entity (XXE)",
+      "category": "web",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative d'injection XXE pour lire des fichiers.",
+        "en": "XXE injection attempt to read files."
+      },
+      "risk": {
+        "fr": "Lecture de fichiers serveur, SSRF.",
+        "en": "Server file reading, SSRF."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Désactiver DTD", "command": "Désactiver le traitement des DTD externes"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2101415",
+      "name": "Server-Side Request Forgery (SSRF)",
+      "category": "web",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative SSRF pour accéder à des ressources internes.",
+        "en": "SSRF attempt to access internal resources."
+      },
+      "risk": {
+        "fr": "Accès aux services internes, metadata cloud.",
+        "en": "Access to internal services, cloud metadata."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Valider les URLs", "command": "Implémenter une whitelist d'URLs"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2008583",
+      "name": "Rootkit Detected",
+      "category": "malware",
+      "severity": 10,
+      "description": {
+        "fr": "Rootkit détecté - Compromission système profonde.",
+        "en": "Rootkit detected - Deep system compromise."
+      },
+      "risk": {
+        "fr": "Accès root persistant caché, très difficile à éradiquer.",
+        "en": "Hidden persistent root access, very difficult to eradicate."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "ISOLER IMMÉDIATEMENT", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Ne pas redémarrer", "command": "Préserver l'état pour analyse forensique"},
+        {"order": 3, "priority": "haute", "description": "Réinstaller", "command": "Le système doit être réinstallé complètement"}
+      ],
+      "references": {"mitre": "T1014", "cve": null}
+    },
+    {
+      "sid": "2008584",
+      "name": "Keylogger Activity",
+      "category": "malware",
+      "severity": 9,
+      "description": {
+        "fr": "Activité de keylogger détectée.",
+        "en": "Keylogger activity detected."
+      },
+      "risk": {
+        "fr": "Tous les mots de passe tapés sont enregistrés.",
+        "en": "All typed passwords are recorded."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler la machine", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Changer tous les mots de passe", "command": "Depuis une autre machine saine"},
+        {"order": 3, "priority": "haute", "description": "Scanner", "command": "Antivirus complet"}
+      ],
+      "references": {"mitre": "T1056.001", "cve": null}
+    },
+    {
+      "sid": "2008585",
+      "name": "RAT (Remote Access Trojan)",
+      "category": "malware",
+      "severity": 9,
+      "description": {
+        "fr": "Trojan d'accès à distance détecté.",
+        "en": "Remote Access Trojan detected."
+      },
+      "risk": {
+        "fr": "Contrôle total à distance de la machine.",
+        "en": "Full remote control of the machine."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Identifier les connexions", "command": "netstat -tulpn | grep ESTABLISHED"},
+        {"order": 3, "priority": "haute", "description": "Tuer les processus suspects", "command": "Identifier et kill les processus malveillants"}
+      ],
+      "references": {"mitre": "T1219", "cve": null}
+    },
+    {
+      "sid": "2003072",
+      "name": "Man-in-the-Middle (MITM)",
+      "category": "network",
+      "severity": 9,
+      "description": {
+        "fr": "Attaque Man-in-the-Middle détectée.",
+        "en": "Man-in-the-Middle attack detected."
+      },
+      "risk": {
+        "fr": "Interception et modification de tout le trafic.",
+        "en": "Interception and modification of all traffic."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Identifier l'attaquant", "command": "arp -a && traceroute google.com"},
+        {"order": 2, "priority": "haute", "description": "Utiliser HTTPS", "command": "Forcer HTTPS sur tous les sites"},
+        {"order": 3, "priority": "haute", "description": "VPN", "command": "Utiliser un VPN pour chiffrer le trafic"}
+      ],
+      "references": {"mitre": "T1557", "cve": null}
+    },
+    {
+      "sid": "2003073",
+      "name": "SSL Stripping",
+      "category": "network",
+      "severity": 8,
+      "description": {
+        "fr": "Tentative de downgrade HTTPS vers HTTP.",
+        "en": "HTTPS to HTTP downgrade attempt."
+      },
+      "risk": {
+        "fr": "Trafic HTTPS intercepté en clair.",
+        "en": "HTTPS traffic intercepted in clear text."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Activer HSTS", "command": "Configurer HTTP Strict Transport Security"},
+        {"order": 2, "priority": "moyenne", "description": "Vérifier le certificat", "command": "Toujours vérifier le cadenas HTTPS"}
+      ],
+      "references": {"mitre": "T1557", "cve": null}
+    },
+    {
+      "sid": "2400005",
+      "name": "DNS Amplification DDoS",
+      "category": "dos",
+      "severity": 8,
+      "description": {
+        "fr": "Attaque DDoS par amplification DNS.",
+        "en": "DNS amplification DDoS attack."
+      },
+      "risk": {
+        "fr": "Votre serveur DNS utilisé pour attaquer d'autres.",
+        "en": "Your DNS server used to attack others."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Désactiver récursion", "command": "Désactiver la récursion DNS ouverte"},
+        {"order": 2, "priority": "haute", "description": "Rate limiting", "command": "Configurer le rate limiting DNS"}
+      ],
+      "references": {"mitre": "T1498.002", "cve": null}
+    },
+    {
+      "sid": "2400006",
+      "name": "NTP Amplification DDoS",
+      "category": "dos",
+      "severity": 7,
+      "description": {
+        "fr": "Attaque DDoS par amplification NTP.",
+        "en": "NTP amplification DDoS attack."
+      },
+      "risk": {
+        "fr": "Serveur NTP utilisé pour amplifier des attaques.",
+        "en": "NTP server used to amplify attacks."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Désactiver monlist", "command": "Ajouter 'disable monitor' dans ntp.conf"},
+        {"order": 2, "priority": "moyenne", "description": "Mettre à jour NTP", "command": "sudo apt update && sudo apt upgrade ntp"}
+      ],
+      "references": {"mitre": "T1498.002", "cve": null}
+    },
+    {
+      "sid": "2024902",
+      "name": "PrintNightmare (CVE-2021-34527)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Exploitation PrintNightmare sur Windows Print Spooler.",
+        "en": "PrintNightmare exploitation on Windows Print Spooler."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance avec privilèges SYSTEM.",
+        "en": "Remote code execution with SYSTEM privileges."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Désactiver Print Spooler", "command": "Stop-Service -Name Spooler -Force; Set-Service -Name Spooler -StartupType Disabled"},
+        {"order": 2, "priority": "haute", "description": "Patcher", "command": "Installer les mises à jour Windows"}
+      ],
+      "references": {"mitre": "T1210", "cve": "CVE-2021-34527"}
+    },
+    {
+      "sid": "2024903",
+      "name": "Spring4Shell (CVE-2022-22965)",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Exploitation Spring4Shell sur Spring Framework.",
+        "en": "Spring4Shell exploitation on Spring Framework."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance sur applications Java/Spring.",
+        "en": "Remote code execution on Java/Spring applications."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Mettre à jour Spring", "command": "Mettre à jour vers Spring 5.3.18+ ou 5.2.20+"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2022-22965"}
+    },
+    {
+      "sid": "2010941",
+      "name": "SMB Share Enumeration",
+      "category": "recon",
+      "severity": 5,
+      "description": {
+        "fr": "Énumération des partages SMB.",
+        "en": "SMB share enumeration."
+      },
+      "risk": {
+        "fr": "Découverte de partages accessibles, fichiers sensibles.",
+        "en": "Discovery of accessible shares, sensitive files."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP} to any port 445"},
+        {"order": 2, "priority": "moyenne", "description": "Auditer les partages", "command": "Vérifier les permissions des partages SMB"}
+      ],
+      "references": {"mitre": "T1135", "cve": null}
+    },
+    {
+      "sid": "2010942",
+      "name": "SNMP Community String Scan",
+      "category": "recon",
+      "severity": 6,
+      "description": {
+        "fr": "Scan des community strings SNMP.",
+        "en": "SNMP community string scan."
+      },
+      "risk": {
+        "fr": "Accès aux informations de configuration réseau.",
+        "en": "Access to network configuration information."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Changer les community strings", "command": "Ne pas utiliser 'public' ou 'private'"},
+        {"order": 2, "priority": "moyenne", "description": "Utiliser SNMPv3", "command": "Migrer vers SNMPv3 avec authentification"}
+      ],
+      "references": {"mitre": "T1046", "cve": null}
+    },
+    {
+      "sid": "2001674",
+      "name": "HTTP Basic Auth Brute Force",
+      "category": "auth",
+      "severity": 7,
+      "description": {
+        "fr": "Brute force sur authentification HTTP Basic.",
+        "en": "HTTP Basic authentication brute force."
+      },
+      "risk": {
+        "fr": "Accès non autorisé aux zones protégées du site.",
+        "en": "Unauthorized access to protected site areas."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Configurer fail2ban", "command": "Ajouter une règle fail2ban pour Apache/Nginx auth"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2001675",
+      "name": "WordPress Login Brute Force",
+      "category": "auth",
+      "severity": 7,
+      "description": {
+        "fr": "Brute force sur wp-login.php.",
+        "en": "Brute force on wp-login.php."
+      },
+      "risk": {
+        "fr": "Compromission du compte admin WordPress.",
+        "en": "WordPress admin account compromise."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "moyenne", "description": "Limiter les tentatives", "command": "Installer un plugin de limitation de connexion"},
+        {"order": 3, "priority": "basse", "description": "Renommer wp-login", "command": "Utiliser un plugin pour masquer wp-login.php"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2101416",
+      "name": "PHP Code Injection",
+      "category": "web",
+      "severity": 10,
+      "description": {
+        "fr": "Injection de code PHP - CRITIQUE.",
+        "en": "PHP code injection - CRITICAL."
+      },
+      "risk": {
+        "fr": "Exécution de code PHP arbitraire sur le serveur.",
+        "en": "Arbitrary PHP code execution on server."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer IMMÉDIATEMENT", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Désactiver eval()", "command": "disable_functions = eval dans php.ini"},
+        {"order": 3, "priority": "haute", "description": "Auditer le code", "command": "Rechercher les vulnérabilités dans le code PHP"}
+      ],
+      "references": {"mitre": "T1059.001", "cve": null}
+    },
+    {
+      "sid": "2101417",
+      "name": "File Upload Vulnerability",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Upload de fichier malveillant détecté.",
+        "en": "Malicious file upload detected."
+      },
+      "risk": {
+        "fr": "Exécution de webshell, compromission du serveur.",
+        "en": "Webshell execution, server compromise."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Supprimer le fichier", "command": "Identifier et supprimer le fichier uploadé"},
+        {"order": 3, "priority": "haute", "description": "Vérifier les uploads", "command": "ls -la /var/www/html/uploads/"}
+      ],
+      "references": {"mitre": "T1505.003", "cve": null}
+    },
+    {
+      "sid": "2008586",
+      "name": "Webshell Detected",
+      "category": "malware",
+      "severity": 10,
+      "description": {
+        "fr": "Webshell détecté sur le serveur web - CRITIQUE.",
+        "en": "Webshell detected on web server - CRITICAL."
+      },
+      "risk": {
+        "fr": "Accès complet au serveur via interface web.",
+        "en": "Full server access via web interface."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Identifier le webshell", "command": "find /var/www -name '*.php' -mtime -7 -exec grep -l 'eval\\|base64_decode\\|system\\|exec' {} \\;"},
+        {"order": 2, "priority": "haute", "description": "Supprimer", "command": "Supprimer les fichiers malveillants identifiés"},
+        {"order": 3, "priority": "haute", "description": "Auditer", "command": "Vérifier comment le webshell a été uploadé"}
+      ],
+      "references": {"mitre": "T1505.003", "cve": null}
+    },
+    {
+      "sid": "2008587",
+      "name": "Phishing Kit Detected",
+      "category": "malware",
+      "severity": 8,
+      "description": {
+        "fr": "Kit de phishing hébergé sur le serveur.",
+        "en": "Phishing kit hosted on server."
+      },
+      "risk": {
+        "fr": "Serveur utilisé pour des campagnes de phishing.",
+        "en": "Server used for phishing campaigns."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Supprimer le kit", "command": "Identifier et supprimer les fichiers de phishing"},
+        {"order": 2, "priority": "haute", "description": "Auditer", "command": "Vérifier comment les fichiers ont été uploadés"},
+        {"order": 3, "priority": "moyenne", "description": "Signaler", "command": "Signaler à Google Safe Browsing"}
+      ],
+      "references": {"mitre": "T1566", "cve": null}
+    },
+    {
+      "sid": "2003074",
+      "name": "Port Knocking Detection",
+      "category": "network",
+      "severity": 4,
+      "description": {
+        "fr": "Tentative de port knocking détectée.",
+        "en": "Port knocking attempt detected."
+      },
+      "risk": {
+        "fr": "Tentative d'accès à des services cachés.",
+        "en": "Attempt to access hidden services."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Surveiller", "command": "Surveiller l'IP pour activité suspecte"}
+      ],
+      "references": {"mitre": "T1205", "cve": null}
+    },
+    {
+      "sid": "2003075",
+      "name": "Rogue Access Point",
+      "category": "network",
+      "severity": 8,
+      "description": {
+        "fr": "Point d'accès WiFi non autorisé détecté.",
+        "en": "Unauthorized WiFi access point detected."
+      },
+      "risk": {
+        "fr": "Interception du trafic WiFi, attaque Evil Twin.",
+        "en": "WiFi traffic interception, Evil Twin attack."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Localiser", "command": "Localiser physiquement le point d'accès"},
+        {"order": 2, "priority": "haute", "description": "Désactiver", "command": "Débrancher ou désactiver le point d'accès"}
+      ],
+      "references": {"mitre": "T1557", "cve": null}
+    },
+    {
+      "sid": "2400007",
+      "name": "Memcached DDoS",
+      "category": "dos",
+      "severity": 8,
+      "description": {
+        "fr": "Attaque DDoS par amplification Memcached.",
+        "en": "Memcached amplification DDoS attack."
+      },
+      "risk": {
+        "fr": "Amplification massive jusqu'à 50000x.",
+        "en": "Massive amplification up to 50000x."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Désactiver UDP", "command": "Désactiver UDP dans Memcached"},
+        {"order": 2, "priority": "haute", "description": "Firewall", "command": "Bloquer le port 11211 en externe"}
+      ],
+      "references": {"mitre": "T1498.002", "cve": null}
+    },
+    {
+      "sid": "2024904",
+      "name": "Apache Struts RCE",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Exploitation RCE sur Apache Struts.",
+        "en": "RCE exploitation on Apache Struts."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance.",
+        "en": "Remote code execution."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Mettre à jour Struts", "command": "Mettre à jour vers la dernière version"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2017-5638"}
+    },
+    {
+      "sid": "2024905",
+      "name": "Drupalgeddon",
+      "category": "exploit",
+      "severity": 10,
+      "description": {
+        "fr": "Exploitation Drupalgeddon sur Drupal.",
+        "en": "Drupalgeddon exploitation on Drupal."
+      },
+      "risk": {
+        "fr": "Exécution de code à distance sur sites Drupal.",
+        "en": "Remote code execution on Drupal sites."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Patcher Drupal", "command": "Mettre à jour Drupal immédiatement"}
+      ],
+      "references": {"mitre": "T1190", "cve": "CVE-2018-7600"}
+    },
+    {
+      "sid": "2001676",
+      "name": "SIP Brute Force",
+      "category": "auth",
+      "severity": 7,
+      "description": {
+        "fr": "Brute force sur service VoIP SIP.",
+        "en": "Brute force on VoIP SIP service."
+      },
+      "risk": {
+        "fr": "Utilisation frauduleuse de la téléphonie, factures élevées.",
+        "en": "Fraudulent telephony use, high bills."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP} to any port 5060"},
+        {"order": 2, "priority": "haute", "description": "Configurer fail2ban", "command": "Activer fail2ban pour Asterisk/FreePBX"}
+      ],
+      "references": {"mitre": "T1110", "cve": null}
+    },
+    {
+      "sid": "2010943",
+      "name": "DNS Zone Transfer Attempt",
+      "category": "recon",
+      "severity": 6,
+      "description": {
+        "fr": "Tentative de transfert de zone DNS.",
+        "en": "DNS zone transfer attempt."
+      },
+      "risk": {
+        "fr": "Révélation de tous les enregistrements DNS.",
+        "en": "Disclosure of all DNS records."
+      },
+      "actions": [
+        {"order": 1, "priority": "moyenne", "description": "Restreindre AXFR", "command": "Configurer allow-transfer dans named.conf"},
+        {"order": 2, "priority": "basse", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"}
+      ],
+      "references": {"mitre": "T1590.002", "cve": null}
+    },
+    {
+      "sid": "2101418",
+      "name": "Template Injection",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Injection de template (SSTI) détectée.",
+        "en": "Server-Side Template Injection (SSTI) detected."
+      },
+      "risk": {
+        "fr": "Exécution de code via le moteur de template.",
+        "en": "Code execution via template engine."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Auditer l'application", "command": "Vérifier les entrées utilisateur dans les templates"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2101419",
+      "name": "Insecure Deserialization",
+      "category": "web",
+      "severity": 9,
+      "description": {
+        "fr": "Désérialisation non sécurisée détectée.",
+        "en": "Insecure deserialization detected."
+      },
+      "risk": {
+        "fr": "Exécution de code arbitraire.",
+        "en": "Arbitrary code execution."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Bloquer l'IP", "command": "sudo ufw deny from {IP}"},
+        {"order": 2, "priority": "haute", "description": "Auditer le code", "command": "Ne jamais désérialiser des données non fiables"}
+      ],
+      "references": {"mitre": "T1190", "cve": null}
+    },
+    {
+      "sid": "2008588",
+      "name": "Spyware Activity",
+      "category": "malware",
+      "severity": 8,
+      "description": {
+        "fr": "Activité de spyware/logiciel espion détectée.",
+        "en": "Spyware activity detected."
+      },
+      "risk": {
+        "fr": "Vol d'informations personnelles et professionnelles.",
+        "en": "Personal and professional information theft."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Isoler", "command": "Déconnecter du réseau"},
+        {"order": 2, "priority": "haute", "description": "Scanner", "command": "Antivirus complet + Malwarebytes"},
+        {"order": 3, "priority": "haute", "description": "Changer mots de passe", "command": "Depuis une machine saine"}
+      ],
+      "references": {"mitre": "T1005", "cve": null}
+    },
+    {
+      "sid": "2003076",
+      "name": "MAC Flooding",
+      "category": "network",
+      "severity": 7,
+      "description": {
+        "fr": "Attaque par inondation MAC sur le switch.",
+        "en": "MAC flooding attack on switch."
+      },
+      "risk": {
+        "fr": "Switch transformé en hub, tout le trafic visible.",
+        "en": "Switch becomes hub, all traffic visible."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Activer port security", "command": "Configurer port-security sur le switch"},
+        {"order": 2, "priority": "moyenne", "description": "Identifier le port", "command": "Localiser le port source de l'attaque"}
+      ],
+      "references": {"mitre": "T1557", "cve": null}
+    },
+    {
+      "sid": "2400008",
+      "name": "Application Layer DDoS",
+      "category": "dos",
+      "severity": 8,
+      "description": {
+        "fr": "Attaque DDoS couche application (L7).",
+        "en": "Application layer (L7) DDoS attack."
+      },
+      "risk": {
+        "fr": "Application web rendue inaccessible.",
+        "en": "Web application made unavailable."
+      },
+      "actions": [
+        {"order": 1, "priority": "haute", "description": "Activer WAF", "command": "Configurer un Web Application Firewall"},
+        {"order": 2, "priority": "haute", "description": "Rate limiting", "command": "Configurer des limites de requêtes"},
+        {"order": 3, "priority": "moyenne", "description": "CDN", "command": "Utiliser un CDN avec protection DDoS"}
+      ],
+      "references": {"mitre": "T1499", "cve": null}
+    }
+  ]
+}
