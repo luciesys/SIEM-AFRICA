@@ -122,8 +122,13 @@ echo -e "${BOLD}  Répondez aux questions suivantes :${NC}"; echo ""
 echo -e "  Langue / Language :"
 echo -e "  ${CYAN}[1]${NC} Français  ${CYAN}[2]${NC} English"
 echo -n "  Choix [1] : "; read -r LC; LC=${LC:-1}
-[[ "${LC}" == "2" ]] && SIEM_LANG="en" && log_ok "Language: English" \
-                     || { SIEM_LANG="fr"; log_ok "Langue: Français"; }
+if [[ "${LC}" == "2" ]]; then
+    SIEM_LANG="en"
+    log_ok "Language: English"
+else
+    SIEM_LANG="fr"
+    log_ok "Langue: Français"
+fi
 
 echo ""
 echo -n "  Nom de l'organisation : "; read -r ORG_NAME; ORG_NAME=${ORG_NAME:-"MonEntreprise"}
