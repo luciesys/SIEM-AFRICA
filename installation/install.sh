@@ -119,37 +119,6 @@ log_ok "Tous les prérequis sont satisfaits"
 log_step "Étape 4/10 — Configuration interactive"
 echo -e "${BOLD}  Répondez aux questions suivantes :${NC}"; echo ""
 
-echo -e "  Langue / Language :"
-echo -e "  ${CYAN}[1]${NC} Français  ${CYAN}[2]${NC} English"
-echo -n "  Choix [1] : "; read -r LC; LC=${LC:-1}
-if [[ "${LC}" == "2" ]]; then
-    SIEM_LANG="en"
-    log_ok "Language: English"
-else
-    SIEM_LANG="fr"
-    log_ok "Langue: Français"
-fi
-
-echo ""
-echo -n "  Nom de l'organisation : "; read -r ORG_NAME; ORG_NAME=${ORG_NAME:-"MonEntreprise"}
-log_ok "Organisation : ${ORG_NAME}"
-
-DEFAULT_IP=$(hostname -I | awk '{print $1}')
-echo -n "  IP du serveur [${DEFAULT_IP}] : "; read -r SERVER_IP; SERVER_IP=${SERVER_IP:-${DEFAULT_IP}}
-log_ok "IP : ${SERVER_IP}"
-
-echo -n "  Email administrateur : "; read -r ADMIN_EMAIL; ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@siem-africa.local"}
-log_ok "Email : ${ADMIN_EMAIL}"
-
-echo ""
-while true; do
-    echo -n "  Mot de passe admin SIEM Africa (min. 12 car.) : "; read -rs ADMIN_PASS; echo ""
-    echo -n "  Confirmez : "; read -rs ADMIN_PASS2; echo ""
-    [[ "${ADMIN_PASS}" == "${ADMIN_PASS2}" && ${#ADMIN_PASS} -ge 12 ]] && { log_ok "Mot de passe configuré"; break; }
-    [[ ${#ADMIN_PASS} -lt 12 ]] && log_warn "Minimum 12 caractères" || log_warn "Mots de passe différents"
-done
-
-echo ""
 # Interfaces réseau
 log_info "Détection des interfaces réseau..."
 INTERFACES=()
