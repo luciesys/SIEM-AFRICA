@@ -1,265 +1,504 @@
 #!/bin/bash
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
-#  Systèmes supportés : Ubuntu 20.04 / 22.04 / 24.04
-#                       Debian 11 / 12
-#  Usage : sudo ./install.sh
-#  Version : 2.0 — Utilisateurs système + credentials.txt
+#  Fichiers : 1-installation/install.sh
+#  Usage    : sudo bash install.sh
+#  Version  : 2.0 — Syntaxe corrigée
 # ================================================================
 
-set -euo pipefail
+# Arrêter le script si une commande échoue
+set -e
 
-# ── Couleurs ──────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+# ================================================================
+# COULEURS
+# ================================================================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m'
 
-# ── Fonctions affichage ───────────────────────────────────────
-log_ok()    { echo -e "${GREEN}[✓]${NC} $1"; }
-log_info()  { echo -e "${CYAN}[i]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
-log_error() { echo -e "${RED}[✗]${NC} $1"; }
-log_step()  {
+# ================================================================
+# FONCTIONS
+# ================================================================
+
+log_ok() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_info() {
+    echo -e "${CYAN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[ATTENTION]${NC} $1"
+}
+
+log_erreur() {
+    echo -e "${RED}[ERREUR]${NC} $1"
+}
+
+log_etape() {
     echo ""
-    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}===================================================${NC}"
     echo -e "${BOLD}  $1${NC}"
-    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}===================================================${NC}"
     echo ""
 }
-log_abort() {
-    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${RED}  INSTALLATION ANNULÉE — $1${NC}"
-    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+quitter() {
+    echo ""
+    echo -e "${RED}===================================================${NC}"
+    echo -e "${RED}  INSTALLATION ANNULEE${NC}"
+    echo -e "${RED}  Raison : $1${NC}"
+    echo -e "${RED}===================================================${NC}"
+    echo ""
     exit 1
 }
 
-# ── Banner ───────────────────────────────────────────────────
+# ================================================================
+# BANNIERE
+# ================================================================
 clear
-echo -e "${CYAN}"
-echo "  ███████╗██╗███████╗███╗   ███╗     █████╗ ███████╗██████╗ ██╗ ██████╗  █████╗ "
-echo "  ██╔════╝██║██╔════╝████╗ ████║    ██╔══██╗██╔════╝██╔══██╗██║██╔════╝ ██╔══██╗"
-echo "  ███████╗██║█████╗  ██╔████╔██║    ███████║█████╗  ██████╔╝██║██║      ███████║"
-echo "  ╚════██║██║██╔══╝  ██║╚██╔╝██║    ██╔══██║██╔══╝  ██╔══██╗██║██║      ██╔══██║"
-echo "  ███████║██║███████╗██║ ╚═╝ ██║    ██║  ██║██║     ██║  ██║██║╚██████╗ ██║  ██║"
-echo "  ╚══════╝╚═╝╚══════╝╚═╝     ╚═╝    ╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝"
-echo -e "${NC}"
-echo -e "  ${BOLD}Module 1 — Installation Snort IDS + Wazuh SIEM${NC}"
-echo -e "  ${YELLOW}Ubuntu 20.04/22.04/24.04  |  Debian 11/12${NC}"
+echo ""
+echo -e "${CYAN}  ╔═══════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}  ║          SIEM Africa — Module 1               ║${NC}"
+echo -e "${CYAN}  ║    Installation Snort IDS + Wazuh SIEM        ║${NC}"
+echo -e "${CYAN}  ╚═══════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "  ${YELLOW}Ubuntu 20.04 / 22.04 / 24.04  |  Debian 11 / 12${NC}"
 echo ""
 
 # ================================================================
-# ÉTAPE 1 — ROOT
+# ETAPE 1 — VERIFICATION ROOT
 # ================================================================
-log_step "Étape 1/10 — Vérification des droits"
-[[ $EUID -ne 0 ]] && log_abort "Lancez avec : sudo ./install.sh"
-log_ok "Droits root confirmés"
+log_etape "Etape 1/10 — Verification des droits"
+
+if [ "$EUID" -ne 0 ]; then
+    quitter "Lancez avec : sudo bash install.sh"
+fi
+
+log_ok "Droits root confirmes"
 
 # ================================================================
-# ÉTAPE 2 — DÉTECTION OS
+# ETAPE 2 — DETECTION OS
 # ================================================================
-log_step "Étape 2/10 — Détection du système d'exploitation"
-[[ ! -f /etc/os-release ]] && log_abort "Impossible de détecter l'OS"
-source /etc/os-release
-OS_NAME="${NAME}"; OS_VERSION="${VERSION_ID}"; OS_ID="${ID}"
-log_info "OS détecté : ${OS_NAME} ${OS_VERSION}"
+log_etape "Etape 2/10 — Detection du systeme d exploitation"
 
-SUPPORTED=false
-case "${OS_ID}" in
-    ubuntu) case "${OS_VERSION}" in 20.04|22.04|24.04) SUPPORTED=true;; esac ;;
-    debian) case "${OS_VERSION}" in 11|12) SUPPORTED=true;; esac ;;
-esac
+if [ ! -f /etc/os-release ]; then
+    quitter "Impossible de detecter l OS"
+fi
 
-if [[ "${SUPPORTED}" == "false" ]]; then
-    log_warn "OS non officiel : ${OS_NAME} ${OS_VERSION}"
-    echo -n "  Continuer quand même ? (oui/non) : "; read -r C
-    [[ "${C}" != "oui" ]] && log_abort "OS non supporté"
-    log_warn "Continuation sur OS non officiel"
+# Lire les informations OS
+OS_NAME=$(grep "^NAME=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
+OS_VERSION=$(grep "^VERSION_ID=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
+OS_ID=$(grep "^ID=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+log_info "OS detecte : ${OS_NAME} ${OS_VERSION}"
+
+# Verifier si l'OS est supporte
+SUPPORTE="non"
+
+if [ "$OS_ID" = "ubuntu" ]; then
+    if [ "$OS_VERSION" = "20.04" ] || [ "$OS_VERSION" = "22.04" ] || [ "$OS_VERSION" = "24.04" ]; then
+        SUPPORTE="oui"
+    fi
+fi
+
+if [ "$OS_ID" = "debian" ]; then
+    if [ "$OS_VERSION" = "11" ] || [ "$OS_VERSION" = "12" ]; then
+        SUPPORTE="oui"
+    fi
+fi
+
+if [ "$SUPPORTE" = "non" ]; then
+    log_warn "OS non supporte officiellement : ${OS_NAME} ${OS_VERSION}"
+    echo -n "  Continuer quand meme ? (oui/non) : "
+    read CONTINUER
+    if [ "$CONTINUER" != "oui" ]; then
+        quitter "OS non supporte"
+    fi
 else
-    log_ok "OS supporté : ${OS_NAME} ${OS_VERSION}"
+    log_ok "OS supporte : ${OS_NAME} ${OS_VERSION}"
 fi
 
 # ================================================================
-# ÉTAPE 3 — PRÉREQUIS MATÉRIELS
+# ETAPE 3 — VERIFICATION PREREQUIS MATERIELS
 # ================================================================
-log_step "Étape 3/10 — Vérification des prérequis matériels"
-ERRORS=()
+log_etape "Etape 3/10 — Verification des prerequis materiels"
 
+ERREURS=0
+
+# RAM
 RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-RAM_GB=$(echo "scale=1; ${RAM_KB}/1024/1024" | bc)
-RAM_INT=$(echo "${RAM_KB}/1024/1024" | bc)
-[[ ${RAM_INT} -lt 4 ]] && { log_error "RAM : ${RAM_GB} GB — 4 GB requis"; ERRORS+=("RAM insuffisante"); } \
-                        || log_ok "RAM : ${RAM_GB} GB ✓"
+RAM_GB=$(( RAM_KB / 1024 / 1024 ))
+RAM_AFFICHE=$(echo "scale=1; $RAM_KB/1024/1024" | bc)
 
-DISK_KB=$(df / | awk 'NR==2{print $4}')
-DISK_GB=$(echo "${DISK_KB}/1024/1024" | bc)
-[[ ${DISK_GB} -lt 60 ]] && { log_error "Disque : ${DISK_GB} GB — 60 GB requis"; ERRORS+=("Disque insuffisant"); } \
-                          || log_ok "Disque : ${DISK_GB} GB ✓"
-
-CPU_CORES=$(nproc)
-[[ ${CPU_CORES} -lt 2 ]] && { log_error "CPU : ${CPU_CORES} cœur(s) — 2 requis"; ERRORS+=("CPU insuffisant"); } \
-                           || log_ok "CPU : ${CPU_CORES} cœurs ✓"
-
-log_info "Vérification connexion internet..."
-if ! ping -c 1 -W 5 8.8.8.8 &>/dev/null; then
-    log_error "Pas de connexion internet"
-    ERRORS+=("Internet requis")
+if [ "$RAM_GB" -lt 4 ]; then
+    log_erreur "RAM : ${RAM_AFFICHE} GB — 4 GB minimum requis"
+    ERREURS=$(( ERREURS + 1 ))
 else
-    log_ok "Internet ✓"
+    log_ok "RAM : ${RAM_AFFICHE} GB"
 fi
 
-if [[ ${#ERRORS[@]} -gt 0 ]]; then
-    echo -e "${RED}  Prérequis non satisfaits :${NC}"
-    for e in "${ERRORS[@]}"; do echo -e "${RED}  → ${e}${NC}"; done
-    log_abort "Corrigez les prérequis et relancez"
+# DISQUE
+DISK_KB=$(df / | tail -1 | awk '{print $4}')
+DISK_GB=$(( DISK_KB / 1024 / 1024 ))
+
+if [ "$DISK_GB" -lt 60 ]; then
+    log_erreur "Disque : ${DISK_GB} GB libres — 60 GB minimum requis"
+    ERREURS=$(( ERREURS + 1 ))
+else
+    log_ok "Disque : ${DISK_GB} GB libres"
 fi
-log_ok "Tous les prérequis sont satisfaits"
+
+# CPU
+CPU_CORES=$(nproc)
+
+if [ "$CPU_CORES" -lt 2 ]; then
+    log_erreur "CPU : ${CPU_CORES} coeur(s) — 2 coeurs minimum requis"
+    ERREURS=$(( ERREURS + 1 ))
+else
+    log_ok "CPU : ${CPU_CORES} coeurs"
+fi
+
+# INTERNET
+log_info "Verification connexion internet..."
+if ping -c 1 -W 5 8.8.8.8 > /dev/null 2>&1; then
+    log_ok "Internet"
+else
+    log_erreur "Pas de connexion internet"
+    ERREURS=$(( ERREURS + 1 ))
+fi
+
+# Arreter si erreurs
+if [ "$ERREURS" -gt 0 ]; then
+    quitter "Corrigez les prerequis ci-dessus et relancez"
+fi
+
+log_ok "Tous les prerequis sont satisfaits"
 
 # ================================================================
-# ÉTAPE 4 — CONFIGURATION INTERACTIVE
+# ETAPE 4 — CONFIGURATION INTERACTIVE
 # ================================================================
-log_step "Étape 4/10 — Configuration interactive"
-echo -e "${BOLD}  Répondez aux questions suivantes :${NC}"; echo ""
+log_etape "Etape 4/10 — Configuration"
 
-# Interfaces réseau
-log_info "Détection des interfaces réseau..."
-INTERFACES=()
-while IFS= read -r iface; do INTERFACES+=("${iface}"); done < \
-    <(ip link show | grep -E "^[0-9]+:" | awk '{print $2}' | tr -d ':' | grep -v '^lo$')
-
-[[ ${#INTERFACES[@]} -eq 0 ]] && log_abort "Aucune interface réseau détectée"
-
-echo -e "\n  ${BOLD}Interfaces disponibles :${NC}\n"
-for i in "${!INTERFACES[@]}"; do
-    IF="${INTERFACES[$i]}"
-    IF_IP=$(ip addr show "${IF}" 2>/dev/null | grep "inet " | awk '{print $2}' | head -1)
-    IF_ST=$(ip link show "${IF}" | grep -o "UP\|DOWN" | head -1)
-    echo -e "  ${CYAN}[$((i+1))]${NC} ${BOLD}${IF}${NC} — IP: ${IF_IP:-N/A} — ${IF_ST:-INCONNU}"
-done
+echo -e "${BOLD}  Repondez aux questions suivantes :${NC}"
 echo ""
 
-if [[ ${#INTERFACES[@]} -eq 1 ]]; then
-    SNORT_IFACE="${INTERFACES[0]}"
-    log_info "Interface unique : ${SNORT_IFACE} — sélectionnée automatiquement"
+# Langue
+echo "  Choisissez la langue :"
+echo "  [1] Francais"
+echo "  [2] English"
+echo -n "  Votre choix [1] : "
+read CHOIX_LANGUE
+
+if [ "$CHOIX_LANGUE" = "2" ]; then
+    SIEM_LANG="en"
+    log_ok "Language: English"
 else
-    echo -n "  Interface à surveiller [1] : "; read -r IC; IC=${IC:-1}
-    [[ ! "${IC}" =~ ^[0-9]+$ || ${IC} -lt 1 || ${IC} -gt ${#INTERFACES[@]} ]] && IC=1
-    SNORT_IFACE="${INTERFACES[$((IC-1))]}"
+    SIEM_LANG="fr"
+    log_ok "Langue : Francais"
 fi
+
+echo ""
+
+# Nom organisation
+echo -n "  Nom de l organisation / PME : "
+read ORG_NAME
+
+if [ -z "$ORG_NAME" ]; then
+    ORG_NAME="MonEntreprise"
+fi
+log_ok "Organisation : ${ORG_NAME}"
+
+# IP serveur
+IP_DEFAUT=$(hostname -I | awk '{print $1}')
+echo -n "  Adresse IP du serveur [${IP_DEFAUT}] : "
+read SERVER_IP
+
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="$IP_DEFAUT"
+fi
+log_ok "IP Serveur : ${SERVER_IP}"
+
+# Email admin
+echo -n "  Email de l administrateur : "
+read ADMIN_EMAIL
+
+if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="admin@siem-africa.local"
+fi
+log_ok "Email : ${ADMIN_EMAIL}"
+
+# Mot de passe admin
+echo ""
+MDP_OK="non"
+while [ "$MDP_OK" = "non" ]; do
+    echo -n "  Mot de passe admin SIEM Africa (min. 12 caracteres) : "
+    read -s ADMIN_PASS
+    echo ""
+    echo -n "  Confirmez le mot de passe : "
+    read -s ADMIN_PASS2
+    echo ""
+
+    if [ "$ADMIN_PASS" != "$ADMIN_PASS2" ]; then
+        log_warn "Les mots de passe ne correspondent pas. Reessayez."
+    elif [ ${#ADMIN_PASS} -lt 12 ]; then
+        log_warn "Minimum 12 caracteres requis. Reessayez."
+    else
+        log_ok "Mot de passe configure"
+        MDP_OK="oui"
+    fi
+done
+
+echo ""
+
+# ================================================================
+# DETECTION INTERFACES RESEAU
+# ================================================================
+log_info "Detection des interfaces reseau..."
+echo ""
+
+# Lister les interfaces (sans lo)
+INTERFACES=""
+COMPTEUR=0
+
+while read -r LIGNE; do
+    NOM=$(echo "$LIGNE" | awk '{print $2}' | tr -d ':')
+    if [ "$NOM" != "lo" ]; then
+        COMPTEUR=$(( COMPTEUR + 1 ))
+        INTERFACES="$INTERFACES $NOM"
+        IP_IF=$(ip addr show "$NOM" 2>/dev/null | grep "inet " | awk '{print $2}' | head -1)
+        echo -e "  ${CYAN}[${COMPTEUR}]${NC} ${BOLD}${NOM}${NC} — IP: ${IP_IF:-N/A}"
+    fi
+done < <(ip link show | grep "^[0-9]")
+
+echo ""
+
+if [ "$COMPTEUR" -eq 0 ]; then
+    quitter "Aucune interface reseau detectee"
+fi
+
+if [ "$COMPTEUR" -eq 1 ]; then
+    SNORT_IFACE=$(echo $INTERFACES | tr -d ' ')
+    log_info "Interface unique : ${SNORT_IFACE} — selectionnee automatiquement"
+else
+    echo -n "  Selectionnez l interface a surveiller [1] : "
+    read CHOIX_IF
+
+    if [ -z "$CHOIX_IF" ]; then
+        CHOIX_IF=1
+    fi
+
+    # Verifier que le choix est valide
+    if [ "$CHOIX_IF" -lt 1 ] || [ "$CHOIX_IF" -gt "$COMPTEUR" ]; then
+        CHOIX_IF=1
+    fi
+
+    # Recuperer le nom de l'interface choisie
+    SNORT_IFACE=$(echo $INTERFACES | tr ' ' '\n' | grep -v '^$' | sed -n "${CHOIX_IF}p")
+fi
+
 log_ok "Interface Snort : ${SNORT_IFACE}"
 
-# Récapitulatif
+# ================================================================
+# RECAPITULATIF AVANT INSTALLATION
+# ================================================================
 echo ""
-echo -e "${BOLD}  ┌──────────────────────────────────────────────┐${NC}"
-echo -e "${BOLD}  │             RÉCAPITULATIF                    │${NC}"
-echo -e "${BOLD}  ├──────────────────────────────────────────────┤${NC}"
-echo -e "  │  OS           : ${CYAN}${OS_NAME} ${OS_VERSION}${NC}"
-echo -e "  │  Langue       : ${CYAN}${SIEM_LANG}${NC}"
-echo -e "  │  Organisation : ${CYAN}${ORG_NAME}${NC}"
-echo -e "  │  IP Serveur   : ${CYAN}${SERVER_IP}${NC}"
-echo -e "  │  Email admin  : ${CYAN}${ADMIN_EMAIL}${NC}"
-echo -e "  │  Interface    : ${CYAN}${SNORT_IFACE}${NC}"
-echo -e "${BOLD}  └──────────────────────────────────────────────┘${NC}"
+echo -e "${BOLD}  +-------------------------------------------+${NC}"
+echo -e "${BOLD}  |           RECAPITULATIF                   |${NC}"
+echo -e "${BOLD}  +-------------------------------------------+${NC}"
+echo -e "  |  OS           : ${CYAN}${OS_NAME} ${OS_VERSION}${NC}"
+echo -e "  |  Langue       : ${CYAN}${SIEM_LANG}${NC}"
+echo -e "  |  Organisation : ${CYAN}${ORG_NAME}${NC}"
+echo -e "  |  IP Serveur   : ${CYAN}${SERVER_IP}${NC}"
+echo -e "  |  Email admin  : ${CYAN}${ADMIN_EMAIL}${NC}"
+echo -e "  |  Interface    : ${CYAN}${SNORT_IFACE}${NC}"
+echo -e "${BOLD}  +-------------------------------------------+${NC}"
 echo ""
-echo -n "  Lancer l'installation ? (oui/non) : "; read -r CONFIRM
-[[ "${CONFIRM}" != "oui" ]] && log_abort "Annulé par l'utilisateur"
+echo -n "  Lancer l installation ? (oui/non) : "
+read CONFIRMER
 
+if [ "$CONFIRMER" != "oui" ]; then
+    quitter "Annule par l utilisateur"
+fi
+
+# Activer le journal
 LOG_FILE="/var/log/siem-africa-install.log"
-exec > >(tee -a "${LOG_FILE}") 2>&1
+exec > >(tee -a "$LOG_FILE") 2>&1
 log_info "Journal : ${LOG_FILE}"
-export SIEM_LANG ORG_NAME SERVER_IP ADMIN_EMAIL ADMIN_PASS SNORT_IFACE OS_ID OS_VERSION
 
 # ================================================================
-# ÉTAPE 5 — CRÉATION DES UTILISATEURS SYSTÈME
+# ETAPE 5 — CREATION DES UTILISATEURS SYSTEME
 # ================================================================
-log_step "Étape 5/10 — Création des utilisateurs système"
-log_info "Chaque service tourne sous son propre utilisateur isolé..."
+log_etape "Etape 5/10 — Creation des utilisateurs systeme"
 
-create_user() {
-    local USER=$1 DESC=$2 HOME_OPT=$3
-    if id "${USER}" &>/dev/null; then
-        log_info "Utilisateur '${USER}' existe déjà"
-    else
-        useradd --system --no-create-home --shell /sbin/nologin \
-                --comment "SIEM Africa - ${DESC}" ${HOME_OPT} "${USER}"
-        log_ok "Utilisateur '${USER}' créé — ${DESC}"
-    fi
-}
+log_info "Chaque service tourne sous son propre utilisateur isole..."
 
-create_user "snort"       "Snort IDS"          ""
-create_user "wazuh"       "Wazuh SIEM"         ""
-create_user "siem-africa" "Dashboard et Agent" "--create-home --home-dir /opt/siem-africa"
+# Creer l'utilisateur snort
+if id "snort" > /dev/null 2>&1; then
+    log_info "Utilisateur snort existe deja"
+else
+    useradd --system --no-create-home --shell /sbin/nologin \
+            --comment "SIEM Africa - Snort IDS" snort
+    log_ok "Utilisateur snort cree"
+fi
+
+# Creer l'utilisateur wazuh
+if id "wazuh" > /dev/null 2>&1; then
+    log_info "Utilisateur wazuh existe deja"
+else
+    useradd --system --no-create-home --shell /sbin/nologin \
+            --comment "SIEM Africa - Wazuh SIEM" wazuh
+    log_ok "Utilisateur wazuh cree"
+fi
+
+# Creer l'utilisateur siem-africa
+if id "siem-africa" > /dev/null 2>&1; then
+    log_info "Utilisateur siem-africa existe deja"
+else
+    useradd --system --create-home --home-dir /opt/siem-africa \
+            --shell /sbin/nologin \
+            --comment "SIEM Africa - Dashboard et Agent" siem-africa
+    log_ok "Utilisateur siem-africa cree"
+fi
 
 echo ""
-echo -e "  ${BOLD}Récapitulatif des utilisateurs :${NC}"
-echo -e "  ${GREEN}✓${NC} snort        → /sbin/nologin — Snort IDS"
-echo -e "  ${GREEN}✓${NC} wazuh        → /sbin/nologin — Wazuh SIEM"
-echo -e "  ${GREEN}✓${NC} siem-africa  → /sbin/nologin — Dashboard + Agent"
-log_ok "Utilisateurs système créés"
+echo -e "  ${GREEN}[OK]${NC} snort       — Snort IDS"
+echo -e "  ${GREEN}[OK]${NC} wazuh       — Wazuh SIEM"
+echo -e "  ${GREEN}[OK]${NC} siem-africa — Dashboard + Agent"
+echo ""
 
 # ================================================================
-# ÉTAPE 6 — MISE À JOUR SYSTÈME
+# ETAPE 6 — MISE A JOUR DU SYSTEME
 # ================================================================
-log_step "Étape 6/10 — Mise à jour du système"
+log_etape "Etape 6/10 — Mise a jour du systeme"
+
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq && log_ok "Paquets mis à jour"
-apt-get upgrade -y -qq && log_ok "Système mis à jour"
+
+log_info "Mise a jour des paquets..."
+apt-get update -qq
+log_ok "Liste des paquets mise a jour"
+
+log_info "Mise a jour du systeme..."
+apt-get upgrade -y -qq
+log_ok "Systeme mis a jour"
+
+log_info "Installation des dependances..."
 apt-get install -y -qq \
-    curl wget gnupg2 lsb-release apt-transport-https ca-certificates \
-    software-properties-common build-essential git net-tools \
-    iptables iptables-persistent python3 python3-pip python3-venv \
-    openssl jq bc libpcap-dev libpcre3-dev libdumbnet-dev \
-    zlib1g-dev libssl-dev libffi-dev 2>/dev/null
-log_ok "Dépendances installées"
+    curl \
+    wget \
+    gnupg2 \
+    lsb-release \
+    apt-transport-https \
+    ca-certificates \
+    software-properties-common \
+    build-essential \
+    git \
+    net-tools \
+    iptables \
+    iptables-persistent \
+    python3 \
+    python3-pip \
+    openssl \
+    jq \
+    bc \
+    libpcap-dev \
+    libpcre3-dev \
+    zlib1g-dev \
+    libssl-dev
+
+log_ok "Dependances installees"
 
 # ================================================================
-# ÉTAPE 7 — INSTALLATION SNORT
+# ETAPE 7 — INSTALLATION SNORT IDS
 # ================================================================
-log_step "Étape 7/10 — Installation de Snort IDS"
+log_etape "Etape 7/10 — Installation de Snort IDS"
 
-apt-get install -y -qq snort 2>/dev/null || {
-    log_warn "Installation depuis les sources..."
+log_info "Installation de Snort..."
+
+apt-get install -y -qq snort 2>/dev/null
+
+# Verifier si Snort est installe
+if ! command -v snort > /dev/null 2>&1; then
+    log_warn "Snort non disponible via apt. Installation depuis les sources..."
+
     cd /tmp
+
+    log_info "Telechargement et installation de DAQ..."
     wget -q https://www.snort.org/downloads/snort/daq-2.0.7.tar.gz
-    tar -xzf daq-2.0.7.tar.gz && cd daq-2.0.7
-    ./configure --quiet && make -j"$(nproc)" && make install && ldconfig
+    tar -xzf daq-2.0.7.tar.gz
+    cd daq-2.0.7
+    ./configure --quiet
+    make -j"$(nproc)"
+    make install
+    ldconfig
     cd /tmp
+
+    log_info "Telechargement et installation de Snort..."
     wget -q https://www.snort.org/downloads/snort/snort-2.9.20.tar.gz
-    tar -xzf snort-2.9.20.tar.gz && cd snort-2.9.20
+    tar -xzf snort-2.9.20.tar.gz
+    cd snort-2.9.20
     ./configure --quiet --enable-sourcefire
-    make -j"$(nproc)" && make install && ldconfig
+    make -j"$(nproc)"
+    make install
+    ldconfig
     ln -sf /usr/local/bin/snort /usr/sbin/snort
-}
+    cd /tmp
+fi
 
-command -v snort &>/dev/null || log_abort "Échec installation Snort"
+# Verifier l'installation
+if ! command -v snort > /dev/null 2>&1; then
+    quitter "Echec installation Snort"
+fi
+
 SNORT_VERSION=$(snort --version 2>&1 | head -1)
-log_ok "Snort : ${SNORT_VERSION}"
+log_ok "Snort installe : ${SNORT_VERSION}"
 
-mkdir -p /etc/snort/rules /var/log/snort /usr/local/lib/snort_dynamicrules
+# Configuration Snort
+log_info "Configuration de Snort..."
+
+mkdir -p /etc/snort/rules
+mkdir -p /var/log/snort
+mkdir -p /usr/local/lib/snort_dynamicrules
 
 cat > /etc/snort/snort.conf << SNORTCONF
-# SIEM Africa — Configuration Snort | ${ORG_NAME} | $(date)
+# SIEM Africa — Configuration Snort
+# Organisation : ${ORG_NAME}
+# Date : $(date)
+
 var HOME_NET any
-var EXTERNAL_NET !\$HOME_NET
+var EXTERNAL_NET any
 var RULE_PATH /etc/snort/rules
 var LOG_PATH  /var/log/snort
+
 config interface: ${SNORT_IFACE}
 config checksum_mode: none
+
 output alert_json: /var/log/snort/alert.json default
 output log_unified2: filename snort.log, limit 128
+
 include \$RULE_PATH/local.rules
 SNORTCONF
 
 cat > /etc/snort/rules/local.rules << 'LRULES'
-# SIEM Africa — Règles locales Snort
-# Ajoutez vos règles personnalisées ici
+# SIEM Africa — Regles Snort locales
+# Ajoutez vos regles personnalisees ici
 LRULES
 
-chown -R snort:snort /var/log/snort /etc/snort
+chown -R snort:snort /var/log/snort
+chown -R snort:snort /etc/snort
 chmod 755 /var/log/snort
 
-cat > /etc/systemd/system/snort.service << SNORT_SVC
+# Service systemd pour Snort
+cat > /etc/systemd/system/snort.service << SNORTSVC
 [Unit]
-Description=Snort IDS — SIEM Africa
+Description=Snort IDS SIEM Africa
 After=network.target
+
 [Service]
 Type=simple
 User=snort
@@ -267,32 +506,49 @@ Group=snort
 ExecStart=/usr/sbin/snort -q -c /etc/snort/snort.conf -i ${SNORT_IFACE} -l /var/log/snort -A json
 Restart=on-failure
 RestartSec=5
+
 [Install]
 WantedBy=multi-user.target
-SNORT_SVC
+SNORTSVC
 
-log_ok "Snort configuré — interface : ${SNORT_IFACE}"
+log_ok "Snort configure — interface : ${SNORT_IFACE}"
 
 # ================================================================
-# ÉTAPE 8 — INSTALLATION WAZUH
+# ETAPE 8 — INSTALLATION WAZUH
 # ================================================================
-log_step "Étape 8/10 — Installation de Wazuh SIEM"
+log_etape "Etape 8/10 — Installation de Wazuh SIEM"
+
+log_info "Ajout du depot Wazuh..."
 
 curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
-    gpg --dearmor | tee /usr/share/keyrings/wazuh.gpg > /dev/null
+    gpg --dearmor | \
+    tee /usr/share/keyrings/wazuh.gpg > /dev/null
+
 echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
     tee /etc/apt/sources.list.d/wazuh.list > /dev/null
-apt-get update -qq && log_ok "Dépôt Wazuh ajouté"
 
-apt-get install -y -qq wazuh-manager  && log_ok "Wazuh Manager installé"
-apt-get install -y -qq wazuh-indexer  && log_ok "Wazuh Indexer installé"
-apt-get install -y -qq wazuh-dashboard && log_ok "Wazuh Dashboard installé"
+apt-get update -qq
+log_ok "Depot Wazuh ajoute"
 
+log_info "Installation Wazuh Manager..."
+apt-get install -y -qq wazuh-manager
+log_ok "Wazuh Manager installe"
+
+log_info "Installation Wazuh Indexer..."
+apt-get install -y -qq wazuh-indexer
+log_ok "Wazuh Indexer installe"
+
+log_info "Installation Wazuh Dashboard..."
+apt-get install -y -qq wazuh-dashboard
+log_ok "Wazuh Dashboard installe"
+
+# Generer les credentials Wazuh
 WAZUH_API_USER="wazuh-api"
-WAZUH_API_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 20)Aa1!"
-WAZUH_DASH_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 20)Bb2!"
+WAZUH_API_PASS=$(openssl rand -hex 16)
+WAZUH_DASH_PASS=$(openssl rand -hex 16)
 
-cat > /var/ossec/api/configuration/api.yaml << WAPI
+# Configuration API Wazuh
+cat > /var/ossec/api/configuration/api.yaml << WAPICONF
 host: 0.0.0.0
 port: 55000
 https:
@@ -305,274 +561,332 @@ access:
   max_login_attempts: 5
   block_time: 300
   max_request_per_minute: 300
-WAPI
-log_ok "API Wazuh configurée — port 55000"
+WAPICONF
+
+log_ok "API Wazuh configuree — port 55000"
 
 # ================================================================
-# ÉTAPE 9 — LIAISON SNORT → WAZUH
+# ETAPE 9 — LIAISON SNORT VERS WAZUH
 # ================================================================
-log_step "Étape 9/10 — Liaison Snort → Wazuh"
+log_etape "Etape 9/10 — Liaison Snort vers Wazuh"
+
+log_info "Configuration de Wazuh pour lire les logs Snort..."
 
 OSSEC_CONF="/var/ossec/etc/ossec.conf"
-cp "${OSSEC_CONF}" "${OSSEC_CONF}.backup"
+cp "$OSSEC_CONF" "${OSSEC_CONF}.backup"
 
-python3 - << 'PYCONF'
+# Ajouter la configuration Snort dans ossec.conf
+python3 << 'PYCONF'
 conf = "/var/ossec/etc/ossec.conf"
-block = """
-  <!-- SIEM Africa — Logs Snort -->
+bloc = """
+  <!-- SIEM Africa — Logs Snort IDS -->
   <localfile>
     <log_format>json</log_format>
     <location>/var/log/snort/alert.json</location>
     <label key="source">snort</label>
   </localfile>
 """
-with open(conf) as f: content = f.read()
-if "alert.json" not in content:
-    content = content.replace("</ossec_config>", block + "\n</ossec_config>")
-    with open(conf, 'w') as f: f.write(content)
-print("Liaison configurée")
+with open(conf, 'r') as f:
+    contenu = f.read()
+
+if "alert.json" not in contenu:
+    contenu = contenu.replace("</ossec_config>", bloc + "\n</ossec_config>")
+    with open(conf, 'w') as f:
+        f.write(contenu)
+    print("Liaison Snort configuree dans ossec.conf")
+else:
+    print("Liaison Snort deja presente dans ossec.conf")
 PYCONF
 
+# Regles Wazuh pour Snort
 cat > /var/ossec/etc/rules/snort_siem_africa.xml << 'SRULES'
+<!-- SIEM Africa — Regles Wazuh pour Snort -->
 <group name="snort,ids,siem-africa,">
+
   <rule id="100001" level="3">
     <decoded_as>json</decoded_as>
     <field name="source">snort</field>
-    <description>Snort IDS — Alerte détectée</description>
+    <description>Snort IDS - Alerte detectee</description>
   </rule>
+
   <rule id="100002" level="14">
     <if_sid>100001</if_sid>
     <field name="priority">1</field>
-    <description>Snort IDS — Alerte CRITIQUE</description>
+    <description>Snort IDS - Alerte CRITIQUE priorite 1</description>
   </rule>
+
   <rule id="100003" level="10">
     <if_sid>100001</if_sid>
     <field name="priority">2</field>
-    <description>Snort IDS — Alerte HAUTE</description>
+    <description>Snort IDS - Alerte HAUTE priorite 2</description>
   </rule>
+
   <rule id="100004" level="7">
     <if_sid>100001</if_sid>
     <field name="priority">3</field>
-    <description>Snort IDS — Alerte MOYENNE</description>
+    <description>Snort IDS - Alerte MOYENNE priorite 3</description>
   </rule>
+
   <rule id="100005" level="4">
     <if_sid>100001</if_sid>
     <field name="priority">4</field>
-    <description>Snort IDS — Alerte FAIBLE</description>
+    <description>Snort IDS - Alerte FAIBLE priorite 4</description>
   </rule>
+
 </group>
 SRULES
 
-log_ok "Règles Wazuh/Snort créées"
+log_ok "Regles Wazuh pour Snort creees"
 
+# Demarrer les services
+log_info "Demarrage des services..."
 systemctl daemon-reload
-systemctl enable wazuh-manager  && systemctl start wazuh-manager  && sleep 3
-systemctl enable wazuh-indexer  && systemctl start wazuh-indexer  && sleep 5
-systemctl enable wazuh-dashboard && systemctl start wazuh-dashboard && sleep 3
-systemctl enable snort           && systemctl start snort           && sleep 2
 
-systemctl is-active --quiet wazuh-manager  && log_ok "Wazuh Manager démarré"  || log_warn "Wazuh Manager — vérifiez les logs"
-systemctl is-active --quiet wazuh-indexer  && log_ok "Wazuh Indexer démarré"  || log_warn "Wazuh Indexer — vérifiez les logs"
-systemctl is-active --quiet wazuh-dashboard && log_ok "Wazuh Dashboard démarré" || log_warn "Wazuh Dashboard — vérifiez les logs"
-systemctl is-active --quiet snort           && log_ok "Snort IDS démarré"      || log_warn "Snort — vérifiez la configuration"
+systemctl enable wazuh-manager
+systemctl start wazuh-manager
+sleep 5
+
+if systemctl is-active --quiet wazuh-manager; then
+    log_ok "Wazuh Manager demarre"
+else
+    log_warn "Wazuh Manager non demarre — verifiez : journalctl -u wazuh-manager"
+fi
+
+systemctl enable wazuh-indexer
+systemctl start wazuh-indexer
+sleep 5
+
+if systemctl is-active --quiet wazuh-indexer; then
+    log_ok "Wazuh Indexer demarre"
+else
+    log_warn "Wazuh Indexer non demarre"
+fi
+
+systemctl enable wazuh-dashboard
+systemctl start wazuh-dashboard
+sleep 3
+
+if systemctl is-active --quiet wazuh-dashboard; then
+    log_ok "Wazuh Dashboard demarre"
+else
+    log_warn "Wazuh Dashboard non demarre"
+fi
+
+systemctl enable snort
+systemctl start snort
+sleep 2
+
+if systemctl is-active --quiet snort; then
+    log_ok "Snort IDS demarre"
+else
+    log_warn "Snort non demarre — verifiez la configuration"
+fi
 
 # ================================================================
-# ÉTAPE 10 — CREDENTIALS + .ENV + RAPPORT
+# ETAPE 10 — GENERATION DES FICHIERS DE CONFIGURATION
 # ================================================================
-log_step "Étape 10/10 — Génération des fichiers de configuration"
+log_etape "Etape 10/10 — Generation des fichiers"
 
+mkdir -p /opt/siem-africa
 mkdir -p /opt/siem-africa/rapports/installation
+
 SECRET_KEY=$(openssl rand -hex 32)
 
 # ── FICHIER CREDENTIALS ──────────────────────────────────────
 CRED_FILE="/opt/siem-africa/credentials.txt"
 
-cat > "${CRED_FILE}" << CREDS
+cat > "$CRED_FILE" << CREDENTIALS
 ================================================================
   SIEM Africa — Fichier de credentials
   Organisation : ${ORG_NAME}
   Serveur      : ${SERVER_IP}
-  Généré le    : $(date '+%d/%m/%Y à %H:%M:%S')
+  Date         : $(date '+%d/%m/%Y a %H:%M:%S')
 ================================================================
   CONFIDENTIEL — Ne partagez JAMAIS ce fichier
-  Conservez-le dans un endroit sécurisé
 ================================================================
 
-── UTILISATEURS SYSTÈME ──────────────────────────────────────
-  Chaque service tourne sous son propre compte isolé.
-  Aucun de ces comptes ne permet une connexion directe.
+── UTILISATEURS SYSTEME ──────────────────────────────────────
 
   snort
-  ├── Rôle    : Snort IDS
-  ├── Shell   : /sbin/nologin
-  └── Dossier : /etc/snort/ | /var/log/snort/
+  - Role    : Snort IDS
+  - Shell   : /sbin/nologin (pas de connexion directe)
+  - Dossier : /etc/snort/ et /var/log/snort/
 
   wazuh
-  ├── Rôle    : Wazuh SIEM
-  ├── Shell   : /sbin/nologin
-  └── Dossier : /var/ossec/
+  - Role    : Wazuh SIEM
+  - Shell   : /sbin/nologin (pas de connexion directe)
+  - Dossier : /var/ossec/
 
   siem-africa
-  ├── Rôle    : Dashboard + Agent
-  ├── Shell   : /sbin/nologin
-  └── Dossier : /opt/siem-africa/
+  - Role    : Dashboard + Agent
+  - Shell   : /sbin/nologin (pas de connexion directe)
+  - Dossier : /opt/siem-africa/
 
 ── SNORT IDS ─────────────────────────────────────────────────
-  Interface surveillée : ${SNORT_IFACE}
-  Configuration        : /etc/snort/snort.conf
-  Logs JSON            : /var/log/snort/alert.json
-  Service              : snort.service
-  Vérifier             : systemctl status snort
+  Interface      : ${SNORT_IFACE}
+  Configuration  : /etc/snort/snort.conf
+  Logs JSON      : /var/log/snort/alert.json
+  Service        : snort.service
+  Verifier       : systemctl status snort
 
 ── WAZUH SIEM ────────────────────────────────────────────────
-  Dashboard URL        : https://${SERVER_IP}
-  Dashboard Login      : admin
-  Dashboard Mot passe  : ${WAZUH_DASH_PASS}
-  IMPORTANT            : Changer à la première connexion
+  Dashboard URL  : https://${SERVER_IP}
+  Login          : admin
+  Mot de passe   : ${WAZUH_DASH_PASS}
+  IMPORTANT      : Changer a la premiere connexion
 
-  API URL              : https://${SERVER_IP}:55000
-  API Utilisateur      : ${WAZUH_API_USER}
-  API Mot de passe     : ${WAZUH_API_PASS}
-
-  Vérifier Manager     : systemctl status wazuh-manager
-  Vérifier Indexer     : systemctl status wazuh-indexer
-  Vérifier Dashboard   : systemctl status wazuh-dashboard
+  API URL        : https://${SERVER_IP}:55000
+  API User       : ${WAZUH_API_USER}
+  API Password   : ${WAZUH_API_PASS}
 
 ── SIEM AFRICA DASHBOARD ─────────────────────────────────────
-  URL                  : http://${SERVER_IP}:5000
-  Login admin          : admin
-  Mot de passe admin   : ${ADMIN_PASS}
-  IMPORTANT            : Changer login ET mot de passe
-                         à la première connexion
-
-  Login dirigeant      : dirigeant
-  Mot de passe         : (défini lors de la création du compte)
-
-── BASE DE DONNÉES ───────────────────────────────────────────
-  Type                 : SQLite
-  Chemin               : /opt/siem-africa/siem_africa.db
-  Propriétaire         : siem-africa
+  URL            : http://${SERVER_IP}:5000
+  Login          : admin
+  Mot de passe   : ${ADMIN_PASS}
+  IMPORTANT      : Changer login ET mot de passe
+                   a la premiere connexion
 
 ── FICHIERS IMPORTANTS ───────────────────────────────────────
-  Ce fichier      : /opt/siem-africa/credentials.txt
-  Configuration   : /opt/siem-africa/.env
-  Logs Snort      : /var/log/snort/alert.json
-  Logs Wazuh      : /var/ossec/logs/
-  Logs install    : /var/log/siem-africa-install.log
-  Rapports        : /opt/siem-africa/rapports/
-  Règles Snort    : /etc/snort/rules/local.rules
-  Règles Wazuh    : /var/ossec/etc/rules/snort_siem_africa.xml
+  Ce fichier     : /opt/siem-africa/credentials.txt
+  Configuration  : /opt/siem-africa/.env
+  Logs Snort     : /var/log/snort/alert.json
+  Logs Wazuh     : /var/ossec/logs/
+  Journal inst.  : /var/log/siem-africa-install.log
+  Rapports       : /opt/siem-africa/rapports/
 
 ── COMMANDES UTILES ──────────────────────────────────────────
-  Voir alertes Snort  : tail -f /var/log/snort/alert.json
-  Voir logs Wazuh     : tail -f /var/ossec/logs/ossec.log
-  Redémarrer Snort    : systemctl restart snort
-  Redémarrer Wazuh    : systemctl restart wazuh-manager
-  Mettre à jour       : cd /opt/siem-africa && sudo ./update.sh
+  Voir alertes   : tail -f /var/log/snort/alert.json
+  Logs Wazuh     : tail -f /var/ossec/logs/ossec.log
+  Restart Snort  : systemctl restart snort
+  Restart Wazuh  : systemctl restart wazuh-manager
+  Mise a jour    : cd /opt/siem-africa && sudo bash update.sh
 
-── PROCHAINE ÉTAPE ───────────────────────────────────────────
-  Module 2 — Base de données
-  Commande : cd ../2-database && sudo ./install.sh
+── PROCHAINE ETAPE ───────────────────────────────────────────
+  Module 2 — Base de donnees
+  Commande : cd ../2-database && sudo bash install.sh
 
 ================================================================
-CREDS
+CREDENTIALS
 
-chmod 600 "${CRED_FILE}"
-chown root:root "${CRED_FILE}"
-log_ok "Credentials : ${CRED_FILE}"
+chmod 600 "$CRED_FILE"
+chown root:root "$CRED_FILE"
+log_ok "credentials.txt genere : ${CRED_FILE}"
 
-# ── FICHIER .ENV ─────────────────────────────────────────────
+# ── FICHIER .ENV ──────────────────────────────────────────────
 ENV_FILE="/opt/siem-africa/.env"
-cat > "${ENV_FILE}" << ENV
-# SIEM Africa — Configuration | ${ORG_NAME} | $(date)
-ORG_NAME="${ORG_NAME}"
+
+cat > "$ENV_FILE" << ENV
+# SIEM Africa — Configuration
+# Organisation : ${ORG_NAME}
+# Date : $(date)
+
+ORG_NAME=${ORG_NAME}
 LANG=${SIEM_LANG}
 SERVER_IP=${SERVER_IP}
 FLASK_PORT=5000
 SECRET_KEY=${SECRET_KEY}
+
 SNORT_INTERFACE=${SNORT_IFACE}
 SNORT_LOG=/var/log/snort/alert.json
+
 WAZUH_HOST=127.0.0.1
 WAZUH_PORT=55000
 WAZUH_USER=${WAZUH_API_USER}
 WAZUH_PASSWORD=${WAZUH_API_PASS}
+
 DB_PATH=/opt/siem-africa/siem_africa.db
 ADMIN_EMAIL=${ADMIN_EMAIL}
+
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
+
 POLLING_INTERVAL=10
 CORRELATION_WINDOW=60
 CORRELATION_THRESHOLD=3
+
 CLOUDFLARE_TOKEN=
 CLOUDFLARE_URL=
+
 REPORTS_DIR=/opt/siem-africa/rapports
 WEEKLY_REPORT_TIME=08:00
 WEEKLY_REPORT_DAY=0
 ENV
 
-chmod 600 "${ENV_FILE}"
-chown siem-africa:siem-africa "${ENV_FILE}"
-chown -R siem-africa:siem-africa /opt/siem-africa
-chmod 750 /opt/siem-africa
-log_ok ".env : ${ENV_FILE}"
+chmod 600 "$ENV_FILE"
+chown siem-africa:siem-africa "$ENV_FILE" 2>/dev/null || true
 
-# ── RAPPORT ──────────────────────────────────────────────────
-REPORT="/opt/siem-africa/rapports/installation/rapport_module1_$(date +%Y%m%d_%H%M%S).txt"
-cat > "${REPORT}" << REPORT_CONTENT
+# Permissions generales
+chown -R siem-africa:siem-africa /opt/siem-africa 2>/dev/null || true
+chmod 750 /opt/siem-africa
+
+log_ok ".env genere : ${ENV_FILE}"
+
+# ── RAPPORT D'INSTALLATION ────────────────────────────────────
+RAPPORT="/opt/siem-africa/rapports/installation/rapport_module1_$(date +%Y%m%d_%H%M%S).txt"
+
+cat > "$RAPPORT" << RAPPORT_CONTENU
 ================================================================
   SIEM Africa — Rapport Module 1
   Organisation : ${ORG_NAME}
-  Date : $(date '+%d/%m/%Y à %H:%M:%S')
+  Date : $(date '+%d/%m/%Y a %H:%M:%S')
 ================================================================
-STATUT : INSTALLATION RÉUSSIE
+STATUT : INSTALLATION REUSSIE
 
-Système    : ${OS_NAME} ${OS_VERSION} | ${RAM_GB} GB RAM | ${DISK_GB} GB disque | ${CPU_CORES} cœurs
+Systeme : ${OS_NAME} ${OS_VERSION}
+RAM     : ${RAM_AFFICHE} GB
+Disque  : ${DISK_GB} GB libres
+CPU     : ${CPU_CORES} coeurs
+IP      : ${SERVER_IP}
 
-Utilisateurs créés :
-  ✓ snort | ✓ wazuh | ✓ siem-africa
+Utilisateurs crees :
+  - snort
+  - wazuh
+  - siem-africa
 
-Composants installés :
-  ✓ Snort IDS  — $(snort --version 2>&1 | head -1)
-  ✓ Wazuh Manager   — :55000
-  ✓ Wazuh Indexer   — :9200
-  ✓ Wazuh Dashboard — https://${SERVER_IP}
-  ✓ Liaison Snort → Wazuh configurée
+Composants installes :
+  - Snort IDS     : $(snort --version 2>&1 | head -1)
+  - Wazuh Manager : installe
+  - Wazuh Indexer : installe
+  - Wazuh Dashboard : https://${SERVER_IP}
+  - Liaison Snort vers Wazuh : configuree
 
-Fichiers générés :
-  ✓ /opt/siem-africa/credentials.txt
-  ✓ /opt/siem-africa/.env
+Fichiers generes :
+  - /opt/siem-africa/credentials.txt
+  - /opt/siem-africa/.env
 
-Prochaine étape :
-  cd ../2-database && sudo ./install.sh
+Prochaine etape :
+  cd ../2-database && sudo bash install.sh
 ================================================================
-REPORT_CONTENT
-log_ok "Rapport : ${REPORT}"
+RAPPORT_CONTENU
 
-# ── RÉSUMÉ FINAL ─────────────────────────────────────────────
+log_ok "Rapport : ${RAPPORT}"
+
+# ================================================================
+# RESUME FINAL
+# ================================================================
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  ✓  MODULE 1 — INSTALLATION TERMINÉE AVEC SUCCÈS${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}===================================================${NC}"
+echo -e "${GREEN}  MODULE 1 — INSTALLATION TERMINEE AVEC SUCCES${NC}"
+echo -e "${GREEN}===================================================${NC}"
 echo ""
-echo -e "  ${BOLD}Utilisateurs système :${NC}"
-echo -e "  ${GREEN}✓${NC} snort       — Snort IDS"
-echo -e "  ${GREEN}✓${NC} wazuh       — Wazuh SIEM"
-echo -e "  ${GREEN}✓${NC} siem-africa — Dashboard + Agent"
+echo -e "  ${BOLD}Utilisateurs systeme :${NC}"
+echo -e "  ${GREEN}[OK]${NC} snort"
+echo -e "  ${GREEN}[OK]${NC} wazuh"
+echo -e "  ${GREEN}[OK]${NC} siem-africa"
 echo ""
-echo -e "  ${BOLD}Services démarrés :${NC}"
-echo -e "  ${GREEN}✓${NC} Snort IDS          — ${CYAN}${SNORT_IFACE}${NC}"
-echo -e "  ${GREEN}✓${NC} Wazuh Manager      — API ${CYAN}:55000${NC}"
-echo -e "  ${GREEN}✓${NC} Wazuh Indexer      — ${CYAN}:9200${NC}"
-echo -e "  ${GREEN}✓${NC} Wazuh Dashboard    — ${CYAN}https://${SERVER_IP}${NC}"
+echo -e "  ${BOLD}Services :${NC}"
+echo -e "  ${GREEN}[OK]${NC} Snort IDS — interface ${CYAN}${SNORT_IFACE}${NC}"
+echo -e "  ${GREEN}[OK]${NC} Wazuh Manager — API ${CYAN}:55000${NC}"
+echo -e "  ${GREEN}[OK]${NC} Wazuh Dashboard — ${CYAN}https://${SERVER_IP}${NC}"
 echo ""
 echo -e "  ${BOLD}Fichiers importants :${NC}"
-echo -e "  ${GREEN}✓${NC} ${CYAN}/opt/siem-africa/credentials.txt${NC}"
-echo -e "  ${GREEN}✓${NC} ${CYAN}/opt/siem-africa/.env${NC}"
+echo -e "  ${GREEN}[OK]${NC} ${CYAN}/opt/siem-africa/credentials.txt${NC}"
+echo -e "  ${GREEN}[OK]${NC} ${CYAN}/opt/siem-africa/.env${NC}"
 echo ""
-echo -e "  ${BOLD}Prochaine étape :${NC}"
-echo -e "  ${YELLOW}cd ../2-database && sudo ./install.sh${NC}"
+echo -e "  ${BOLD}Prochaine etape :${NC}"
+echo -e "  ${YELLOW}cd ../2-database && sudo bash install.sh${NC}"
 echo ""
-echo -e "  ${CYAN}Tous vos accès sont dans credentials.txt${NC}"
+echo -e "  Tous vos acces sont dans : ${CYAN}/opt/siem-africa/credentials.txt${NC}"
 echo ""
