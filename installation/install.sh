@@ -86,7 +86,7 @@ ERRORS=()
 RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 RAM_GB=$(echo "scale=1; ${RAM_KB}/1024/1024" | bc)
 RAM_INT=$(echo "${RAM_KB}/1024/1024" | bc)
-[[ ${RAM_INT} -lt 6 ]] && { log_error "RAM : ${RAM_GB} GB — 6 GB requis"; ERRORS+=("RAM insuffisante"); } \
+[[ ${RAM_INT} -lt 4 ]] && { log_error "RAM : ${RAM_GB} GB — 4 GB requis"; ERRORS+=("RAM insuffisante"); } \
                         || log_ok "RAM : ${RAM_GB} GB ✓"
 
 DISK_KB=$(df / | awk 'NR==2{print $4}')
@@ -95,7 +95,7 @@ DISK_GB=$(echo "${DISK_KB}/1024/1024" | bc)
                           || log_ok "Disque : ${DISK_GB} GB ✓"
 
 CPU_CORES=$(nproc)
-[[ ${CPU_CORES} -lt 3 ]] && { log_error "CPU : ${CPU_CORES} cœur(s) — 3 requis"; ERRORS+=("CPU insuffisant"); } \
+[[ ${CPU_CORES} -lt 2 ]] && { log_error "CPU : ${CPU_CORES} cœur(s) — 2 requis"; ERRORS+=("CPU insuffisant"); } \
                            || log_ok "CPU : ${CPU_CORES} cœurs ✓"
 
 log_info "Vérification connexion internet..."
