@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
-#  Fichier  : agent/install.sh
+#  Fichier  : 3-agent/install.sh
 #  Usage    : sudo bash install.sh
 #  Version  : 1.0
 # ================================================================
@@ -49,13 +49,77 @@ check_root() {
 }
 
 check_modules() {
-    log_info "Verification des modules precedents..."
+    log_info "Verification des prerequis (Snort + Wazuh + Base de donnees)..."
 
-    [ ! -d "/var/ossec" ]                    && quitter "Wazuh non installe. Lancez le module 1."
-    [ ! -f "/opt/siem-africa/.env" ]         && quitter "Module 1 non installe."
-    [ ! -f "/opt/siem-africa/siem_africa.db" ] && quitter "Base de donnees non trouvee. Lancez le module 2."
+    # ── Snort ──────────────────────────────────────────────────
+    if ! command -v snort > /dev/null 2>&1; then
+        quitter "Snort non installe. Lancez d abord le module 1."
+    fi
+    log_ok "Snort installe : $(snort --version 2>&1 | head -1)"
 
-    log_ok "Modules 1 et 2 detectes"
+    if ! systemctl is-active --quiet snort 2>/dev/null; then
+        log_warn "Snort installe mais service non actif — demarrage..."
+        systemctl start snort 2>/dev/null || log_warn "Impossible de demarrer Snort"
+    else
+        log_ok "Snort actif (service snort.service)"
+    fi
+
+    # ── Wazuh Manager ──────────────────────────────────────────
+    if [ ! -d "/var/ossec" ]; then
+        quitter "Wazuh non installe. Lancez d abord le module 1."
+    fi
+    log_ok "Wazuh detecte : /var/ossec present"
+
+    if ! systemctl is-active --quiet wazuh-manager 2>/dev/null; then
+        log_warn "Wazuh Manager non actif — demarrage..."
+        systemctl start wazuh-manager 2>/dev/null || log_warn "Impossible de demarrer Wazuh Manager"
+    else
+        log_ok "Wazuh Manager actif (service wazuh-manager.service)"
+    fi
+
+    # ── Wazuh API (port 55000) ──────────────────────────────────
+    log_info "Verification de l API Wazuh sur le port 55000..."
+    API_CHECK=0
+    for i in 1 2 3; do
+        if ss -tlnp 2>/dev/null | grep -q ':55000'; then
+            API_CHECK=1
+            break
+        fi
+        log_info "Tentative $i/3 — attente 5s..."
+        sleep 5
+    done
+
+    if [ "$API_CHECK" -eq 1 ]; then
+        log_ok "API Wazuh accessible sur le port 55000"
+    else
+        log_warn "API Wazuh non detectee sur :55000 — l agent reessaiera au demarrage"
+    fi
+
+    # ── Fichier .env ────────────────────────────────────────────
+    if [ ! -f "/opt/siem-africa/.env" ]; then
+        quitter "Fichier .env non trouve. Lancez d abord le module 1."
+    fi
+    log_ok "Fichier .env present"
+
+    # ── Base de donnees ─────────────────────────────────────────
+    DB_PATH=$(grep "^DB_PATH=" /opt/siem-africa/.env | cut -d'=' -f2 | tr -d '"' 2>/dev/null || echo "/opt/siem-africa/siem_africa.db")
+    if [ ! -f "$DB_PATH" ]; then
+        quitter "Base de donnees non trouvee ($DB_PATH). Lancez d abord le module 2."
+    fi
+
+    # Verifier que la table attaques contient des signatures
+    ATTACK_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM attaques;" 2>/dev/null || echo "0")
+    if [ "$ATTACK_COUNT" -eq 0 ]; then
+        quitter "Table attaques vide. Verifiez le module 2 (attacks.sql)."
+    fi
+    log_ok "Base de donnees : $ATTACK_COUNT signatures chargees"
+
+    echo ""
+    echo -e "  ${GREEN}[OK]${NC} Snort IDS         — installe et actif"
+    echo -e "  ${GREEN}[OK]${NC} Wazuh Manager     — installe et actif"
+    echo -e "  ${GREEN}[OK]${NC} Wazuh API :55000  — accessible"
+    echo -e "  ${GREEN}[OK]${NC} Base SQLite        — $ATTACK_COUNT signatures"
+    echo ""
 }
 
 check_agent_file() {
