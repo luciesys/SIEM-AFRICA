@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
-#  Fichier  : 3-agent/install.sh
+#  Fichier  : agent/install.sh
 #  Usage    : sudo bash install.sh
 #  Version  : 1.0
 # ================================================================
