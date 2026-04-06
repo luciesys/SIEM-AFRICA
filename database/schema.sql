@@ -1,8 +1,8 @@
 -- ================================================================
---  SIEM Africa — Base de données SQLite
+--  SIEM Africa — Schéma base de données SQLite
 --  Fichier  : 2-database/schema.sql
 --  Version  : 1.0
---  Contenu  : 10 tables + 2 vues + index
+--  Contenu  : 11 tables + 2 vues + index
 --  Usage    : sqlite3 siem_africa.db < schema.sql
 -- ================================================================
 
@@ -12,12 +12,11 @@ PRAGMA synchronous   = NORMAL;
 
 -- ================================================================
 -- TABLE 1 : utilisateurs
--- Comptes admin_securite et dirigeant
 -- ================================================================
 CREATE TABLE IF NOT EXISTS utilisateurs (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     username           TEXT    UNIQUE NOT NULL,
-    email              TEXT    UNIQUE NOT NULL,
+    email              TEXT    UNIQUE,
     password_hash      TEXT    NOT NULL,
     role               TEXT    NOT NULL DEFAULT 'admin_securite'
                        CHECK(role IN ('admin_securite','dirigeant')),
@@ -36,7 +35,7 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
 
 -- ================================================================
 -- TABLE 2 : attaques
--- Référentiel des signatures d'attaques contextualisées Afrique
+-- Référentiel des signatures d'attaques
 -- ================================================================
 CREATE TABLE IF NOT EXISTS attaques (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,17 +60,14 @@ CREATE TABLE IF NOT EXISTS attaques (
     cree_le            TEXT    DEFAULT (datetime('now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_att_rule_sid
-    ON attaques(rule_id, COALESCE(sid_snort, 0));
-CREATE INDEX IF NOT EXISTS idx_att_rule_id    ON attaques(rule_id);
-CREATE INDEX IF NOT EXISTS idx_att_sid        ON attaques(sid_snort);
-CREATE INDEX IF NOT EXISTS idx_att_gravite    ON attaques(gravite);
-CREATE INDEX IF NOT EXISTS idx_att_categorie  ON attaques(categorie);
-CREATE INDEX IF NOT EXISTS idx_att_faux_pos   ON attaques(faux_positif);
+CREATE INDEX IF NOT EXISTS idx_att_rule_id   ON attaques(rule_id);
+CREATE INDEX IF NOT EXISTS idx_att_sid       ON attaques(sid_snort);
+CREATE INDEX IF NOT EXISTS idx_att_gravite   ON attaques(gravite);
+CREATE INDEX IF NOT EXISTS idx_att_categorie ON attaques(categorie);
+CREATE INDEX IF NOT EXISTS idx_att_faux_pos  ON attaques(faux_positif);
 
 -- ================================================================
 -- TABLE 3 : alertes
--- Alertes reçues de Wazuh et enrichies par l'agent
 -- ================================================================
 CREATE TABLE IF NOT EXISTS alertes (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_al_inconnue  ON alertes(est_inconnue);
 
 -- ================================================================
 -- TABLE 4 : actions_admin
--- Journal complet horodaté de toutes les actions
+-- Journal de toutes les actions effectuées
 -- ================================================================
 CREATE TABLE IF NOT EXISTS actions_admin (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,27 +261,26 @@ CREATE TABLE IF NOT EXISTS parametres (
     modifie_le  TEXT    DEFAULT (datetime('now'))
 );
 
--- Valeurs par défaut
 INSERT OR IGNORE INTO parametres (cle, valeur, description) VALUES
 -- Agent
 ('polling_interval',    '10',            'Interrogation API Wazuh toutes les X secondes'),
-('correlation_window',  '60',            'Fenêtre corrélation en secondes'),
-('correlation_seuil',   '3',             'Nb alertes même IP pour déclencher corrélation'),
--- Sécurité
-('pwd_duree_jours',     '90',            'Durée validité mot de passe en jours'),
+('correlation_window',  '60',            'Fenetre correlation en secondes'),
+('correlation_seuil',   '3',             'Nb alertes meme IP pour declencher correlation'),
+-- Securite
+('pwd_duree_jours',     '90',            'Duree validite mot de passe en jours'),
 ('pwd_alerte_jours',    '15',            'Alerter X jours avant expiration'),
 ('max_tentatives',      '5',             'Max tentatives login avant blocage compte'),
-('blocage_minutes',     '30',            'Durée blocage compte en minutes'),
+('blocage_minutes',     '30',            'Duree blocage compte en minutes'),
 ('session_timeout',     '120',           'Expiration session inactive en minutes'),
 -- Rapports
-('rapport_hebdo_heure', '08:00',         'Heure génération rapport hebdomadaire'),
-('rapport_hebdo_jour',  '0',             '0=Lundi ... 6=Dimanche'),
+('rapport_hebdo_heure', '08:00',         'Heure generation rapport hebdomadaire'),
+('rapport_hebdo_jour',  '0',             '0=Lundi 6=Dimanche'),
 -- Interface
-('langue_defaut',       'fr',            'Langue par défaut fr ou en'),
+('langue_defaut',       'fr',            'Langue par defaut fr ou en'),
 -- SMTP
 ('smtp_host',           'smtp.gmail.com','Serveur SMTP'),
 ('smtp_port',           '587',           'Port SMTP 587=TLS 465=SSL'),
-('smtp_user',           '',              'Adresse email expéditeur'),
+('smtp_user',           '',              'Adresse email expediteur'),
 ('smtp_password',       '',              'Mot de passe SMTP'),
 ('alert_email',         '',              'Email destinataire des alertes critiques'),
 -- Wazuh
@@ -298,6 +293,21 @@ INSERT OR IGNORE INTO parametres (cle, valeur, description) VALUES
 -- Cloudflare
 ('cloudflare_token',    '',              'Token Cloudflare Tunnel'),
 ('cloudflare_url',      '',              'URL publique Cloudflare');
+
+-- ================================================================
+-- TABLE 11 : notifications
+-- ================================================================
+CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    alerte_id   INTEGER REFERENCES alertes(id),
+    type_notif  TEXT    NOT NULL
+                CHECK(type_notif IN ('Email','Push','SMS')),
+    destinataire TEXT   NOT NULL,
+    envoye      INTEGER NOT NULL DEFAULT 0,
+    envoye_le   TEXT,
+    erreur      TEXT,
+    cree_le     TEXT    DEFAULT (datetime('now'))
+);
 
 -- ================================================================
 -- VUE 1 : alertes enrichies pour le dashboard
@@ -336,20 +346,20 @@ LEFT JOIN utilisateurs u ON a.resolu_par = u.id
 ORDER BY a.timestamp_alerte DESC;
 
 -- ================================================================
--- VUE 2 : statistiques dashboard en une seule requête
+-- VUE 2 : statistiques pour le dashboard
 -- ================================================================
 CREATE VIEW IF NOT EXISTS v_stats_dashboard AS
 SELECT
-    COUNT(CASE WHEN gravite=4 AND statut='Nouveau'                     THEN 1 END) AS critiques_actives,
-    COUNT(CASE WHEN gravite=3 AND statut='Nouveau'                     THEN 1 END) AS hautes_actives,
-    COUNT(CASE WHEN gravite=2 AND statut='Nouveau'                     THEN 1 END) AS moyennes_actives,
-    COUNT(CASE WHEN gravite=1 AND statut='Nouveau'                     THEN 1 END) AS faibles_actives,
-    COUNT(CASE WHEN date(timestamp_alerte)=date('now')                 THEN 1 END) AS alertes_auj,
-    COUNT(CASE WHEN timestamp_alerte>=datetime('now','-7 days')        THEN 1 END) AS alertes_7j,
-    COUNT(CASE WHEN timestamp_alerte>=datetime('now','-30 days')       THEN 1 END) AS alertes_30j,
-    COUNT(CASE WHEN statut IN ('Résolu','Acquitté')                    THEN 1 END) AS alertes_resolues,
-    COUNT(CASE WHEN statut='Faux positif'                              THEN 1 END) AS faux_positifs,
-    COUNT(CASE WHEN est_inconnue=1                                     THEN 1 END) AS inconnues,
-    COUNT(CASE WHEN est_correllee=1                                    THEN 1 END) AS correlees,
-    COUNT(*)                                                                        AS total_alertes
+    COUNT(CASE WHEN gravite=4 AND statut='Nouveau'                  THEN 1 END) AS critiques_actives,
+    COUNT(CASE WHEN gravite=3 AND statut='Nouveau'                  THEN 1 END) AS hautes_actives,
+    COUNT(CASE WHEN gravite=2 AND statut='Nouveau'                  THEN 1 END) AS moyennes_actives,
+    COUNT(CASE WHEN gravite=1 AND statut='Nouveau'                  THEN 1 END) AS faibles_actives,
+    COUNT(CASE WHEN date(timestamp_alerte)=date('now')              THEN 1 END) AS alertes_auj,
+    COUNT(CASE WHEN timestamp_alerte>=datetime('now','-7 days')     THEN 1 END) AS alertes_7j,
+    COUNT(CASE WHEN timestamp_alerte>=datetime('now','-30 days')    THEN 1 END) AS alertes_30j,
+    COUNT(CASE WHEN statut IN ('Résolu','Acquitté')                 THEN 1 END) AS alertes_resolues,
+    COUNT(CASE WHEN statut='Faux positif'                           THEN 1 END) AS faux_positifs,
+    COUNT(CASE WHEN est_inconnue=1                                  THEN 1 END) AS inconnues,
+    COUNT(CASE WHEN est_correllee=1                                 THEN 1 END) AS correlees,
+    COUNT(*)                                                                     AS total_alertes
 FROM alertes;
