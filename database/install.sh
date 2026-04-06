@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================================
 #  SIEM Africa — Module 2 : Base de données SQLite
-#  Fichier  : database/install.sh
+#  Fichier  : 2-database/install.sh
 #  Usage    : sudo bash install.sh
 #  Version  : 1.0
 # ================================================================
@@ -27,8 +27,6 @@ DB_PATH="/opt/siem-africa/siem_africa.db"
 CRED_FILE="/opt/siem-africa/credentials.txt"
 ENV_FILE="/opt/siem-africa/.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Utilisateur système du module 2
 USER_DB="siem-db"
 
 # ================================================================
@@ -45,7 +43,7 @@ quitter() {
     echo -e "${RED}╔══════════════════════════════════════════════════════╗${NC}"
     echo -e "${RED}║     INSTALLATION ARRETEE                             ║${NC}"
     echo -e "${RED}╚══════════════════════════════════════════════════════╝${NC}"
-    echo -e "  Raison : $1"
+    echo -e "  Raison  : $1"
     echo -e "  Journal : $LOG_FILE"
     echo ""
     exit 1
@@ -75,19 +73,15 @@ check_root() {
 check_module1() {
     log_info "Verification que le module 1 est installe..."
 
-    if [ ! -f "$ENV_FILE" ]; then
-        quitter "Module 1 non installe. Lancez d abord : cd ../1-installation && sudo bash install.sh"
+    if [ ! -d "/var/ossec" ]; then
+        quitter "Wazuh non detecte. Lancez d abord le module 1."
     fi
 
     if ! command -v snort > /dev/null 2>&1; then
-        quitter "Snort non installe. Lancez d abord le module 1."
+        quitter "Snort non detecte. Lancez d abord le module 1."
     fi
 
-    if [ ! -d "/var/ossec" ]; then
-        quitter "Wazuh non installe. Lancez d abord le module 1."
-    fi
-
-    log_ok "Module 1 detecte"
+    log_ok "Module 1 detecte (Snort + Wazuh)"
 }
 
 check_files() {
@@ -101,11 +95,11 @@ check_files() {
         quitter "attacks.sql introuvable dans ${SCRIPT_DIR}"
     fi
 
-    log_ok "Fichiers SQL presents"
+    log_ok "Fichiers SQL trouves : schema.sql + attacks.sql"
 }
 
 # ================================================================
-# ETAPE 1 — CREATION UTILISATEUR SYSTEME
+# ETAPE 1 — UTILISATEUR SYSTEME
 # ================================================================
 create_user() {
     log_etape "1/5" "CREATION UTILISATEUR SYSTEME"
@@ -113,18 +107,23 @@ create_user() {
     if id "$USER_DB" > /dev/null 2>&1; then
         log_info "Utilisateur ${USER_DB} existe deja"
     else
-        useradd --system --no-create-home --shell /sbin/nologin \
-                --comment "SIEM Africa - Base de donnees" "$USER_DB"
+        useradd --system \
+                --no-create-home \
+                --shell /sbin/nologin \
+                --comment "SIEM Africa - Base de donnees" \
+                "$USER_DB"
         log_ok "Utilisateur ${USER_DB} cree"
     fi
 
     echo ""
-    echo -e "  ${GREEN}[OK]${NC} ${USER_DB} — Base de donnees SQLite (shell: /sbin/nologin)"
+    echo -e "  ${GREEN}[OK]${NC} ${USER_DB}"
+    echo -e "       Role  : Base de donnees SQLite"
+    echo -e "       Shell : /sbin/nologin (pas de connexion directe)"
     echo ""
 }
 
 # ================================================================
-# ETAPE 2 — INSTALLATION SQLITE ET PYTHON
+# ETAPE 2 — DEPENDANCES
 # ================================================================
 install_deps() {
     log_etape "2/5" "INSTALLATION DES DEPENDANCES"
@@ -133,17 +132,18 @@ install_deps() {
     apt-get update -qq
 
     # SQLite3
-    if ! command -v sqlite3 > /dev/null 2>&1; then
+    if command -v sqlite3 > /dev/null 2>&1; then
+        log_ok "SQLite3 deja installe : $(sqlite3 --version | awk '{print $1}')"
+    else
         apt-get install -y -qq sqlite3
         log_ok "SQLite3 installe : $(sqlite3 --version | awk '{print $1}')"
-    else
-        log_ok "SQLite3 deja installe : $(sqlite3 --version | awk '{print $1}')"
     fi
 
-    # Python3 et pip
+    # Python3
     apt-get install -y -qq python3 python3-pip > /dev/null 2>&1
+    log_ok "Python3 pret"
 
-    # bcrypt pour le hashage des mots de passe
+    # bcrypt
     if python3 -c "import bcrypt" > /dev/null 2>&1; then
         log_ok "bcrypt deja installe"
     else
@@ -154,7 +154,7 @@ install_deps() {
 }
 
 # ================================================================
-# ETAPE 3 — CREATION DE LA BASE DE DONNEES
+# ETAPE 3 — CREATION DE LA BASE
 # ================================================================
 create_database() {
     log_etape "3/5" "CREATION DE LA BASE DE DONNEES"
@@ -163,27 +163,30 @@ create_database() {
     mkdir -p "$(dirname "$DB_PATH")"
     mkdir -p /opt/siem-africa/rapports/installation
 
-    # Sauvegarder si la base existe deja
+    # Sauvegarder si base existante
     if [ -f "$DB_PATH" ]; then
         BACKUP="${DB_PATH}.backup_$(date +%Y%m%d_%H%M%S)"
         cp "$DB_PATH" "$BACKUP"
         log_warn "Base existante sauvegardee : $BACKUP"
+        rm -f "$DB_PATH"
     fi
 
     # Creer la base avec le schema
-    log_info "Creation de la base SQLite : $DB_PATH"
+    log_info "Creation de la base : $DB_PATH"
     sqlite3 "$DB_PATH" < "${SCRIPT_DIR}/schema.sql"
 
-    # Compter les elements crees
+    # Compter
     TABLE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")
     VIEW_COUNT=$(sqlite3  "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='view';")
+    INDEX_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='index';")
 
-    log_ok "Tables creees  : ${TABLE_COUNT}"
-    log_ok "Vues creees    : ${VIEW_COUNT}"
+    log_ok "Tables  : ${TABLE_COUNT}"
+    log_ok "Vues    : ${VIEW_COUNT}"
+    log_ok "Index   : ${INDEX_COUNT}"
 }
 
 # ================================================================
-# ETAPE 4 — IMPORT DES SIGNATURES D'ATTAQUES
+# ETAPE 4 — IMPORT DES SIGNATURES
 # ================================================================
 import_attacks() {
     log_etape "4/5" "IMPORT DES SIGNATURES D ATTAQUES"
@@ -194,27 +197,25 @@ import_attacks() {
     ATTACK_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM attaques;")
     log_ok "Signatures importees : ${ATTACK_COUNT}"
 
-    # Afficher la repartition par categorie
     echo ""
-    echo -e "  ${BOLD}Repartition par categorie :${NC}"
+    echo -e "  ${BOLD}Par categorie :${NC}"
     sqlite3 "$DB_PATH" \
         "SELECT '  ' || categorie || ' : ' || COUNT(*) || ' signatures'
          FROM attaques
          GROUP BY categorie
          ORDER BY COUNT(*) DESC;"
-    echo ""
 
-    # Repartition par gravite
-    echo -e "  ${BOLD}Repartition par gravite :${NC}"
+    echo ""
+    echo -e "  ${BOLD}Par gravite :${NC}"
     while IFS='|' read -r GRAV NB; do
         case "$GRAV" in
-            4) LABEL="Critique" COLOR="$RED" ;;
-            3) LABEL="Haute   " COLOR="$YELLOW" ;;
-            2) LABEL="Moyenne " COLOR="$CYAN" ;;
-            1) LABEL="Faible  " COLOR="$GREEN" ;;
-            *) LABEL="Inconnu " COLOR="$NC" ;;
+            4) LABEL="Critique" ; COLOR="$RED"    ;;
+            3) LABEL="Haute"    ; COLOR="$YELLOW" ;;
+            2) LABEL="Moyenne"  ; COLOR="$CYAN"   ;;
+            1) LABEL="Faible"   ; COLOR="$GREEN"  ;;
+            *) LABEL="Inconnu"  ; COLOR="$NC"     ;;
         esac
-        echo -e "  ${COLOR}●${NC} ${LABEL} : ${NB} signatures"
+        echo -e "  ${COLOR}●${NC} ${LABEL} : ${NB}"
     done < <(sqlite3 "$DB_PATH" \
         "SELECT gravite, COUNT(*) FROM attaques GROUP BY gravite ORDER BY gravite DESC;")
     echo ""
@@ -229,11 +230,11 @@ finalize() {
     # Permissions sur la base
     chown "$USER_DB":"$USER_DB" "$DB_PATH" 2>/dev/null || true
     chmod 640 "$DB_PATH"
-    log_ok "Permissions base de donnees : 640"
+    log_ok "Permissions : 640 (proprietaire: ${USER_DB})"
 
-    # Mettre a jour le .env avec le chemin de la base
+    # Mettre a jour .env
     if [ -f "$ENV_FILE" ]; then
-        if grep -q "^DB_PATH=" "$ENV_FILE"; then
+        if grep -q "^DB_PATH=" "$ENV_FILE" 2>/dev/null; then
             sed -i "s|^DB_PATH=.*|DB_PATH=${DB_PATH}|" "$ENV_FILE"
         else
             echo "DB_PATH=${DB_PATH}" >> "$ENV_FILE"
@@ -246,18 +247,21 @@ finalize() {
         cat >> "$CRED_FILE" << CREDS
 
 ── BASE DE DONNEES (module 2) ────────────────────────────────
-  Utilisateur    : ${USER_DB} (shell: /sbin/nologin)
-  Type           : SQLite
-  Chemin         : ${DB_PATH}
-  Tables         : ${TABLE_COUNT}
-  Vues           : ${VIEW_COUNT}
-  Signatures     : ${ATTACK_COUNT} attaques contextualisees Afrique
-  Permissions    : 640 (lecture siem-db uniquement)
+
+  Utilisateur systeme  : ${USER_DB}
+  Shell                : /sbin/nologin (pas de connexion directe)
+  Type                 : SQLite
+  Chemin               : ${DB_PATH}
+  Tables               : ${TABLE_COUNT}
+  Vues                 : ${VIEW_COUNT}
+  Signatures attaques  : ${ATTACK_COUNT}
+  Permissions          : 640
 
   Commandes utiles :
-  Ouvrir base    : sqlite3 ${DB_PATH}
-  Stats          : sqlite3 ${DB_PATH} "SELECT * FROM v_stats_dashboard;"
-  Voir alertes   : sqlite3 ${DB_PATH} "SELECT * FROM v_alertes_recentes LIMIT 10;"
+  Ouvrir la base  : sqlite3 ${DB_PATH}
+  Voir stats      : sqlite3 ${DB_PATH} "SELECT * FROM v_stats_dashboard;"
+  Voir alertes    : sqlite3 ${DB_PATH} "SELECT * FROM v_alertes_recentes LIMIT 10;"
+  Compter alertes : sqlite3 ${DB_PATH} "SELECT COUNT(*) FROM alertes;"
 
 ── PROCHAINE ETAPE ───────────────────────────────────────────
   Module 3 — Agent intelligent
@@ -267,7 +271,7 @@ CREDS
         log_ok "credentials.txt mis a jour"
     fi
 
-    # Rapport installation module 2
+    # Rapport
     RAPPORT="/opt/siem-africa/rapports/installation/rapport_module2_$(date +%Y%m%d_%H%M%S).txt"
     cat > "$RAPPORT" << RAPPORT_CONTENT
 ================================================================
@@ -281,14 +285,18 @@ Base de donnees     : ${DB_PATH}
 Version SQLite      : $(sqlite3 --version | awk '{print $1}')
 Tables              : ${TABLE_COUNT}
 Vues                : ${VIEW_COUNT}
-Signatures          : ${ATTACK_COUNT} attaques
+Index               : ${INDEX_COUNT}
+Signatures          : ${ATTACK_COUNT} attaques contextualisees Afrique
+
+Repartition par categorie :
+$(sqlite3 "$DB_PATH" "SELECT '  ' || categorie || ' : ' || COUNT(*) FROM attaques GROUP BY categorie ORDER BY COUNT(*) DESC;")
 
 Prochaine etape :
   cd ../3-agent && sudo bash install.sh
 ================================================================
 RAPPORT_CONTENT
 
-    log_ok "Rapport : $RAPPORT"
+    log_ok "Rapport genere : $RAPPORT"
 }
 
 # ================================================================
@@ -306,7 +314,8 @@ show_summary() {
     echo -e "${CYAN}── BASE DE DONNEES ───────────────────────────────────${NC}"
     echo -e "  Chemin      : ${YELLOW}${DB_PATH}${NC}"
     echo -e "  Tables      : ${TABLE_COUNT}"
-    echo -e "  Signatures  : ${ATTACK_COUNT} attaques contextualisees Afrique"
+    echo -e "  Vues        : ${VIEW_COUNT}"
+    echo -e "  Signatures  : ${ATTACK_COUNT} attaques"
     echo ""
     echo -e "${CYAN}── COMMANDES UTILES ──────────────────────────────────${NC}"
     echo -e "  sqlite3 ${DB_PATH}"
