@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
-#  Fichier  : 3-agent/agent.py
+#  Fichier  : agent/agent.py
 #  Usage    : python3 agent.py
 #  Service  : siem-agent.service
 #  Version  : 1.0
