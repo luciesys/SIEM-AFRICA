@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
-#  Fichier  : agent/agent.py
+#  Fichier  : 3-agent/agent.py
 #  Usage    : python3 agent.py
 #  Service  : siem-agent.service
 #  Version  : 1.0
@@ -835,8 +835,91 @@ class SiemAgent:
         except Exception as e:
             self.logger.error(f'Erreur polling : {e}')
 
+    def check_prerequisites(self):
+        """Vérifie que Snort et Wazuh sont installés et actifs"""
+        import subprocess
+        errors = []
+
+        # ── Vérifier Snort ─────────────────────────────────────
+        try:
+            result = subprocess.run(
+                ['snort', '--version'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                version = result.stderr.split('\n')[0] if result.stderr else 'inconnu'
+                self.logger.info(f'Snort detecte : {version.strip()}')
+            else:
+                errors.append('Snort non fonctionnel')
+        except FileNotFoundError:
+            errors.append('Snort non installe (commande snort introuvable)')
+        except Exception as e:
+            errors.append(f'Erreur verification Snort : {e}')
+
+        # ── Vérifier que Snort tourne (service) ────────────────
+        try:
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'snort'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.stdout.strip() == 'active':
+                self.logger.info('Service Snort actif')
+            else:
+                self.logger.warning('Service Snort non actif — les alertes Snort ne seront pas generees')
+        except Exception:
+            pass
+
+        # ── Vérifier Wazuh ─────────────────────────────────────
+        if not os.path.isdir('/var/ossec'):
+            errors.append('Wazuh non installe (/var/ossec absent)')
+        else:
+            self.logger.info('Wazuh detecte : /var/ossec present')
+
+        # ── Vérifier le service Wazuh Manager ──────────────────
+        try:
+            result = subprocess.run(
+                ['systemctl', 'is-active', 'wazuh-manager'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.stdout.strip() == 'active':
+                self.logger.info('Service Wazuh Manager actif')
+            else:
+                errors.append('Service wazuh-manager non actif — demarrez-le avec : systemctl start wazuh-manager')
+        except Exception:
+            pass
+
+        # ── Vérifier la base de données ────────────────────────
+        if not os.path.isfile(self.config['DB_PATH']):
+            errors.append(f'Base de donnees non trouvee : {self.config["DB_PATH"]}')
+        else:
+            try:
+                conn = sqlite3.connect(self.config['DB_PATH'])
+                count = conn.execute('SELECT COUNT(*) FROM attaques').fetchone()[0]
+                conn.close()
+                self.logger.info(f'Base SQLite OK : {count} signatures chargees')
+                if count == 0:
+                    errors.append('Table attaques vide — lancez le module 2')
+            except Exception as e:
+                errors.append(f'Erreur base de donnees : {e}')
+
+        # ── Résultat ───────────────────────────────────────────
+        if errors:
+            self.logger.error('PREREQUIS NON SATISFAITS :')
+            for err in errors:
+                self.logger.error(f'  -> {err}')
+            self.logger.error('Corrigez les problemes et relancez l agent.')
+            return False
+
+        self.logger.info('Tous les prerequis sont satisfaits')
+        return True
+
     def run(self):
         """Boucle principale de l'agent"""
+        # Vérification des prérequis au démarrage
+        if not self.check_prerequisites():
+            self.logger.error('Arret de l agent — prerequis non satisfaits')
+            sys.exit(1)
+
         self.logger.info('Authentification Wazuh...')
         if not self.wazuh.authenticate():
             self.logger.error('Impossible de s authentifier a Wazuh. Attente 30s...')
