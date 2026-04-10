@@ -463,7 +463,7 @@ SNORTSVC
 # ================================================================
 install_wazuh() {
     log_etape "3/4" "INSTALLATION WAZUH $WAZUH_VERSION"
-    log_info "Cette etape prend 10 a 20 minutes..."
+    log_info "Cette etape prend 20 a 40 minutes en fonction de l'état de votre connection internet"
 
     # Télécharger le script d'installation Wazuh
     curl -sO https://packages.wazuh.com/${WAZUH_VERSION}/wazuh-install.sh || \
