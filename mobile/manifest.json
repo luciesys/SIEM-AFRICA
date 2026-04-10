@@ -1,0 +1,20 @@
+{
+  "name": "SIEM Africa",
+  "short_name": "SIEM Africa",
+  "description": "Cybersecurite pour PME africaines",
+  "start_url": "/mobile/",
+  "scope": "/mobile/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "orientation": "portrait",
+  "lang": "fr",
+  "icons": [
+    { "src": "/mobile/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/mobile/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Alertes critiques", "url": "/mobile/#alertes", "description": "Voir les alertes critiques" }
+  ],
+  "categories": ["security", "utilities"]
+}

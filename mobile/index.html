@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SIEM Africa">
+<title>SIEM Africa</title>
+<link rel="manifest" href="/mobile/manifest.json">
+<link rel="stylesheet" href="/mobile/style.css">
+</head>
+<body>
+
+<!-- ══ ECRAN DE CHARGEMENT ══════════════════════════════════════ -->
+<div id="splash" class="splash">
+  <div class="splash-content">
+    <div class="splash-shield">🛡</div>
+    <h1>SIEM Africa</h1>
+    <p>Cybersecurite pour PME africaines</p>
+    <div class="splash-loader"></div>
+  </div>
+</div>
+
+<!-- ══ ECRAN LOGIN ═══════════════════════════════════════════════ -->
+<div id="page-login" class="page hidden">
+  <div class="login-wrap">
+    <div class="login-logo">
+      <span class="login-shield">🛡</span>
+      <h1>SIEM Africa</h1>
+      <p id="login-subtitle">Connexion</p>
+    </div>
+
+    <div id="login-error" class="alert alert-danger hidden"></div>
+
+    <form id="login-form" class="login-form">
+      <div class="form-group">
+        <label id="lbl-email">Email</label>
+        <input type="email" id="input-email" class="form-input"
+               autocomplete="email" inputmode="email"
+               placeholder="admin@entreprise.com" required>
+      </div>
+      <div class="form-group">
+        <label id="lbl-password">Mot de passe</label>
+        <div class="input-eye">
+          <input type="password" id="input-password" class="form-input"
+                 autocomplete="current-password" required>
+          <button type="button" class="eye-btn" id="eye-btn">👁</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="btn-login">
+        Se connecter
+      </button>
+    </form>
+
+    <div class="lang-switch">
+      <button class="lang-btn active" id="btn-fr" onclick="setLang('fr')">FR</button>
+      <button class="lang-btn" id="btn-en" onclick="setLang('en')">EN</button>
+    </div>
+    <p class="login-footer">v2.0 — github.com/luciesys/SIEM-AFRICA</p>
+  </div>
+</div>
+
+<!-- ══ ECRAN CHANGEMENT MDP (1ere connexion) ════════════════════ -->
+<div id="page-change-pwd" class="page hidden">
+  <div class="login-wrap">
+    <div class="login-logo">
+      <span class="login-shield">🔒</span>
+      <h1 id="chg-title">Securite</h1>
+      <p id="chg-subtitle">Changez votre mot de passe</p>
+    </div>
+
+    <div class="alert alert-warning" id="chg-info"></div>
+    <div id="chg-error" class="alert alert-danger hidden"></div>
+
+    <form id="chg-form" class="login-form">
+      <div class="form-group">
+        <label id="lbl-newpwd">Nouveau mot de passe</label>
+        <input type="password" id="input-newpwd" class="form-input"
+               minlength="8" required placeholder="Minimum 8 caracteres">
+      </div>
+      <div class="form-group">
+        <label id="lbl-confirmpwd">Confirmer</label>
+        <input type="password" id="input-confirmpwd" class="form-input"
+               minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="btn-chg">
+        Enregistrer
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ APP PRINCIPALE ════════════════════════════════════════════ -->
+<div id="app" class="hidden">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-shield">🛡</span>
+      <span class="topbar-title">SIEM Africa</span>
+    </div>
+    <div class="topbar-right">
+      <span id="conn-status" class="conn-dot conn-ok" title="Connexion OK">●</span>
+      <button class="icon-btn" id="btn-notif" title="Notifications">🔔</button>
+      <button class="icon-btn" id="btn-logout">⎋</button>
+    </div>
+  </header>
+
+  <!-- Contenu -->
+  <main class="app-content">
+
+    <!-- ── PAGE DASHBOARD ────────────────────────────────────── -->
+    <section id="sec-dashboard" class="section active">
+
+      <div class="user-greeting">
+        <span id="greeting-text">Bonjour</span>
+        <span id="greeting-email" class="greeting-email"></span>
+        <span id="greeting-time" class="greeting-time"></span>
+      </div>
+
+      <!-- Compteurs -->
+      <div class="stats-grid">
+        <div class="stat-card stat-crit" onclick="goToAlertes(4)">
+          <div class="stat-nb" id="nb-critiques">—</div>
+          <div class="stat-lbl" id="lbl-critique">Critique</div>
+        </div>
+        <div class="stat-card stat-high" onclick="goToAlertes(3)">
+          <div class="stat-nb" id="nb-hautes">—</div>
+          <div class="stat-lbl" id="lbl-haute">Haute</div>
+        </div>
+        <div class="stat-card stat-med" onclick="goToAlertes(2)">
+          <div class="stat-nb" id="nb-moyennes">—</div>
+          <div class="stat-lbl" id="lbl-moyenne">Moyenne</div>
+        </div>
+        <div class="stat-card stat-low" onclick="goToAlertes(1)">
+          <div class="stat-nb" id="nb-faibles">—</div>
+          <div class="stat-lbl" id="lbl-faible">Faible</div>
+        </div>
+        <div class="stat-card stat-info">
+          <div class="stat-nb" id="nb-24h">—</div>
+          <div class="stat-lbl" id="lbl-24h">24h</div>
+        </div>
+        <div class="stat-card stat-blocked">
+          <div class="stat-nb" id="nb-ips">—</div>
+          <div class="stat-lbl" id="lbl-ips">IPs</div>
+        </div>
+      </div>
+
+      <!-- Derniere mise a jour -->
+      <p class="last-update" id="last-update"></p>
+
+      <!-- Alertes critiques recentes -->
+      <div class="card">
+        <div class="card-header">
+          <h2 id="title-recentes">Alertes critiques</h2>
+          <button class="btn btn-sm" onclick="navTo('alertes')" id="btn-voir-tout">Voir tout</button>
+        </div>
+        <div id="list-critiques" class="alert-list">
+          <div class="loading" id="loading-dash">⟳</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── PAGE ALERTES ──────────────────────────────────────── -->
+    <section id="sec-alertes" class="section hidden">
+
+      <!-- Filtres -->
+      <div class="filter-bar">
+        <select id="filter-gravite" class="filter-select" onchange="loadAlertes()">
+          <option value="" id="opt-toutes">Toutes</option>
+          <option value="4" id="opt-crit">Critique</option>
+          <option value="3" id="opt-high">Haute</option>
+          <option value="2" id="opt-med">Moyenne</option>
+          <option value="1" id="opt-low">Faible</option>
+        </select>
+        <select id="filter-statut" class="filter-select" onchange="loadAlertes()">
+          <option value="" id="opt-tous-stat">Tous statuts</option>
+          <option value="Nouveau" id="opt-nouveau">Nouveau</option>
+          <option value="En cours" id="opt-encours">En cours</option>
+          <option value="Resolu" id="opt-resolu">Resolu</option>
+        </select>
+        <button class="btn btn-sm" onclick="loadAlertes()" id="btn-rafraichir">↺</button>
+      </div>
+
+      <div id="list-alertes" class="alert-list">
+        <div class="loading">⟳</div>
+      </div>
+
+    </section>
+
+    <!-- ── PAGE DETAIL ALERTE ────────────────────────────────── -->
+    <section id="sec-detail" class="section hidden">
+      <button class="back-btn" onclick="navTo('alertes')">← <span id="btn-retour">Retour</span></button>
+      <div id="detail-content"></div>
+    </section>
+
+    <!-- ── PAGE PARAMETRES ───────────────────────────────────── -->
+    <section id="sec-parametres" class="section hidden">
+      <div class="card">
+        <div class="card-header"><h2 id="title-compte">Mon compte</h2></div>
+        <div class="card-body">
+          <p class="param-line"><strong>Email :</strong> <span id="param-email">—</span></p>
+          <p class="param-line"><strong>Role :</strong> <span id="param-role">—</span></p>
+          <p class="param-line"><strong>Langue :</strong></p>
+          <div class="lang-switch" style="margin-top:8px">
+            <button class="lang-btn" id="param-fr" onclick="setLang('fr')">FR</button>
+            <button class="lang-btn" id="param-en" onclick="setLang('en')">EN</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 id="title-notifs">Notifications</h2></div>
+        <div class="card-body">
+          <p id="notif-status-text" class="param-line"></p>
+          <button class="btn btn-primary" id="btn-activer-notif" onclick="activerNotifications()">
+            🔔 <span id="btn-notif-label">Activer les notifications</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 id="title-connexion">Connexion</h2></div>
+        <div class="card-body">
+          <p id="txt-dashboard">Acceder au dashboard complet :</p>
+          <a id="link-dashboard" href="#" class="btn btn-secondary btn-full" target="_blank">
+            🖥 Dashboard
+          </a>
+        </div>
+      </div>
+
+      <button class="btn btn-danger btn-full" style="margin-top:16px" onclick="logout()" id="btn-deconnexion">
+        ⎋ Deconnexion
+      </button>
+    </section>
+
+  </main>
+
+  <!-- Bottom navigation -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-section="dashboard" onclick="navTo('dashboard')">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label" id="nav-lbl-dashboard">Accueil</span>
+    </button>
+    <button class="nav-btn" data-section="alertes" onclick="navTo('alertes')">
+      <span class="nav-icon">🔔</span>
+      <span class="nav-label" id="nav-lbl-alertes">Alertes</span>
+      <span class="nav-badge hidden" id="nav-badge-alertes">0</span>
+    </button>
+    <button class="nav-btn" data-section="parametres" onclick="navTo('parametres')">
+      <span class="nav-icon">⚙</span>
+      <span class="nav-label" id="nav-lbl-parametres">Reglages</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- Toast notifications -->
+<div id="toast-container"></div>
+
+<script src="/mobile/app.js"></script>
+</body>
+</html>
