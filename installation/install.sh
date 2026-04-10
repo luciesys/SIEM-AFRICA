@@ -3,7 +3,6 @@
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
 #  Adapté de : luciesys/snort-wazuh-package
 #  Usage     : sudo bash install.sh
-#  Version   : 1.0
 # ================================================================
 
 set -e
@@ -67,6 +66,7 @@ show_banner() {
     echo "╔══════════════════════════════════════════════════════╗"
     echo "║       SIEM Africa — Module 1                        ║"
     echo "║       Installation Snort IDS + Wazuh SIEM           ║"
+    echo "║       Version 2.0 — Logs supplementaires            ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo -e "  ${YELLOW}Ubuntu 20.04/22.04/24.04  |  Debian 11/12${NC}"
@@ -531,6 +531,35 @@ configure_integration() {
         log_ok "Liaison Snort configuree dans ossec.conf"
     else
         log_info "Liaison Snort deja presente dans ossec.conf"
+    fi
+
+    # Ajouter les logs supplementaires (auth.log, syslog, nginx/apache)
+    log_info "Ajout des logs supplementaires dans Wazuh..."
+
+    if ! grep -q "auth.log" "$OSSEC_CONF"; then
+        sed -i '/<\/ossec_config>/i \  <!-- SIEM Africa - Logs SSH et sudo -->\n  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/auth.log<\/location>\n  <\/localfile>' "$OSSEC_CONF"
+        log_ok "Logs auth.log ajoutes (SSH, sudo, connexions)"
+    fi
+
+    if ! grep -q "syslog" "$OSSEC_CONF"; then
+        sed -i '/<\/ossec_config>/i \  <!-- SIEM Africa - Logs systeme -->\n  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/syslog<\/location>\n  <\/localfile>' "$OSSEC_CONF"
+        log_ok "Logs syslog ajoutes (modifications systeme)"
+    fi
+
+    # Nginx (si installe)
+    if [ -f "/var/log/nginx/access.log" ]; then
+        if ! grep -q "nginx/access" "$OSSEC_CONF"; then
+            sed -i '/<\/ossec_config>/i \  <!-- SIEM Africa - Logs Nginx -->\n  <localfile>\n    <log_format>apache<\/log_format>\n    <location>\/var\/log\/nginx\/access.log<\/location>\n  <\/localfile>' "$OSSEC_CONF"
+            log_ok "Logs Nginx ajoutes (attaques web)"
+        fi
+    fi
+
+    # Apache (si installe)
+    if [ -f "/var/log/apache2/access.log" ]; then
+        if ! grep -q "apache2/access" "$OSSEC_CONF"; then
+            sed -i '/<\/ossec_config>/i \  <!-- SIEM Africa - Logs Apache -->\n  <localfile>\n    <log_format>apache<\/log_format>\n    <location>\/var\/log\/apache2\/access.log<\/location>\n  <\/localfile>' "$OSSEC_CONF"
+            log_ok "Logs Apache ajoutes (attaques web)"
+        fi
     fi
 
     # Ajouter les règles Wazuh pour Snort
