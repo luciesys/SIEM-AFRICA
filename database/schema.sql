@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS attaques (
     cve                TEXT,
     frequence_afrique  TEXT    NOT NULL DEFAULT 'Commune'
                        CHECK(frequence_afrique IN ('Très commune','Commune','Rare')),
+    mitre_id           TEXT,
+    mitre_tactique     TEXT,
     cree_le            TEXT    DEFAULT (datetime('now'))
 );
 
@@ -94,6 +96,7 @@ CREATE TABLE IF NOT EXISTS alertes (
     machine_os         TEXT,
     est_inconnue       INTEGER NOT NULL DEFAULT 0,
     description_wazuh  TEXT,
+    est_honeypot       INTEGER NOT NULL DEFAULT 0,
     est_correllee      INTEGER NOT NULL DEFAULT 0,
     correlation_count  INTEGER NOT NULL DEFAULT 1,
     statut             TEXT    NOT NULL DEFAULT 'Nouveau'
@@ -307,6 +310,26 @@ CREATE TABLE IF NOT EXISTS notifications (
     envoye_le   TEXT,
     erreur      TEXT,
     cree_le     TEXT    DEFAULT (datetime('now'))
+);
+
+-- ================================================================
+-- TABLE 12 : comportements (Machine Learning — Isolation Forest)
+-- Metriques collectees toutes les 10 minutes par behavior.py
+-- ================================================================
+CREATE TABLE IF NOT EXISTS comportements (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_mesure    TEXT    NOT NULL DEFAULT (datetime('now')),
+    nb_alertes_10min    INTEGER NOT NULL DEFAULT 0,
+    nb_ips_uniques      INTEGER NOT NULL DEFAULT 0,
+    heure_du_jour       INTEGER NOT NULL DEFAULT 0,
+    gravite_moyenne     REAL    NOT NULL DEFAULT 0.0,
+    ratio_inconnus      REAL    NOT NULL DEFAULT 0.0,
+    nb_critiques        INTEGER NOT NULL DEFAULT 0,
+    nb_correlees        INTEGER NOT NULL DEFAULT 0,
+    est_anomalie        INTEGER NOT NULL DEFAULT 0,
+    score_ml            REAL,
+    phase               TEXT    NOT NULL DEFAULT 'apprentissage'
+                        CHECK(phase IN ('apprentissage','detection'))
 );
 
 -- ================================================================
