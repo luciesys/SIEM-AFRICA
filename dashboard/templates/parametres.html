@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if messages %}
+{% for msg in messages %}
+<div class="alert alert-success">{{ msg }}</div>
+{% endfor %}
+{% endif %}
+
+<form method="post">
+{% csrf_token %}
+
+<!-- Organisation -->
+<div class="card">
+  <div class="card-header">
+    <h2>{% if lang == 'fr' %}Organisation{% else %}Organization{% endif %}</h2>
+  </div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Nom de l'entreprise{% else %}Company name{% endif %}</label>
+        <input type="text" name="organisation_nom" class="form-control"
+               value="{{ params.organisation_nom.valeur|default:'' }}">
+      </div>
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Email de l'entreprise{% else %}Company email{% endif %}</label>
+        <input type="email" name="organisation_email" class="form-control"
+               value="{{ params.organisation_email.valeur|default:'' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>{% if lang == 'fr' %}Langue de l'interface{% else %}Interface language{% endif %}</label>
+      <select name="langue_user" class="form-select">
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Francais</option>
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Notifications SMTP -->
+<div class="card">
+  <div class="card-header">
+    <h2>{% if lang == 'fr' %}Notifications Email (SMTP){% else %}Email Notifications (SMTP){% endif %}</h2>
+  </div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        <label>{{ T.smtp_host }}</label>
+        <input type="text" name="smtp_host" class="form-control"
+               value="{{ params.smtp_host.valeur|default:'smtp.gmail.com' }}"
+               placeholder="smtp.gmail.com">
+      </div>
+      <div class="form-group">
+        <label>{{ T.smtp_port }}</label>
+        <input type="number" name="smtp_port" class="form-control"
+               value="{{ params.smtp_port.valeur|default:'587' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>{{ T.smtp_user }}</label>
+        <input type="email" name="smtp_user" class="form-control"
+               value="{{ params.smtp_user.valeur|default:'' }}"
+               placeholder="votre.email@gmail.com">
+      </div>
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Mot de passe SMTP{% else %}SMTP password{% endif %}</label>
+        <input type="password" name="smtp_password" class="form-control"
+               value="{{ params.smtp_password.valeur|default:'' }}"
+               placeholder="{% if lang == 'fr' %}Laisser vide pour ne pas changer{% else %}Leave empty to keep current{% endif %}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>{{ T.alert_email }}</label>
+      <input type="email" name="alert_email" class="form-control"
+             value="{{ params.alert_email.valeur|default:'' }}"
+             placeholder="admin@entreprise.com">
+    </div>
+  </div>
+</div>
+
+<!-- Agent -->
+<div class="card">
+  <div class="card-header">
+    <h2>{% if lang == 'fr' %}Configuration de l'agent{% else %}Agent configuration{% endif %}</h2>
+  </div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Intervalle polling (secondes){% else %}Polling interval (seconds){% endif %}</label>
+        <input type="number" name="polling_interval" class="form-control"
+               value="{{ params.polling_interval.valeur|default:'10' }}" min="5" max="60">
+      </div>
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Seuil correlation (nb alertes){% else %}Correlation threshold (nb alerts){% endif %}</label>
+        <input type="number" name="correlation_seuil" class="form-control"
+               value="{{ params.correlation_seuil.valeur|default:'3' }}" min="2" max="20">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Fenetre correlation (secondes){% else %}Correlation window (seconds){% endif %}</label>
+        <input type="number" name="correlation_window" class="form-control"
+               value="{{ params.correlation_window.valeur|default:'60' }}" min="30" max="600">
+      </div>
+      <div class="form-group">
+        <label>{% if lang == 'fr' %}Delai Active Response (secondes){% else %}Active Response delay (seconds){% endif %}</label>
+        <input type="number" name="active_response_delay" class="form-control"
+               value="{{ params.active_response_delay.valeur|default:'300' }}" min="0" max="3600">
+        <small class="form-hint">{% if lang == 'fr' %}0 = desactive{% else %}0 = disabled{% endif %}</small>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>{% if lang == 'fr' %}Honeypot active{% else %}Honeypot enabled{% endif %}</label>
+      <select name="honeypot_enabled" class="form-select">
+        <option value="1" {% if params.honeypot_enabled.valeur == "1" %}selected{% endif %}>
+          {% if lang == 'fr' %}Oui{% else %}Yes{% endif %}
+        </option>
+        <option value="0" {% if params.honeypot_enabled.valeur == "0" %}selected{% endif %}>
+          {% if lang == 'fr' %}Non{% else %}No{% endif %}
+        </option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="form-actions">
+  <button type="submit" class="btn btn-primary btn-lg">
+    💾 {{ T.enregistrer }}
+  </button>
+  <p class="form-hint">
+    {% if lang == 'fr' %}
+    Les modifications sont appliquees immediatement pour le dashboard.
+    L'agent necessite un redemarrage : <code>systemctl restart siem-agent</code>
+    {% else %}
+    Changes apply immediately for the dashboard.
+    Agent requires restart: <code>systemctl restart siem-agent</code>
+    {% endif %}
+  </p>
+</div>
+
+</form>
+{% endblock %}

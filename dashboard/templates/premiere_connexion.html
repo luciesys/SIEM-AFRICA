@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM Africa — {{ T.changer_creds }}</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-page">
+
+<div class="login-container">
+  <div class="login-logo">
+    <span class="login-shield">🛡</span>
+    <h1>SIEM Africa</h1>
+    <p>{{ T.changer_creds }}</p>
+  </div>
+
+  <div class="alert alert-warning">
+    🔒 {{ T.premiere_co_msg }}
+  </div>
+
+  <div class="alert alert-info" style="background:#e8f4fd;color:#1565c0;border:1px solid #90caf9;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px;">
+    📧 {% if lang == 'fr' %}Votre email de connexion reste : <strong>{{ username }}</strong>{% else %}Your login email remains: <strong>{{ username }}</strong>{% endif %}
+  </div>
+
+  {% if erreur %}
+  <div class="alert alert-danger">{{ erreur }}</div>
+  {% endif %}
+
+  <form method="post" class="login-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label>{% if lang == 'fr' %}Nouveau mot de passe{% else %}New password{% endif %}</label>
+      <input type="password" name="new_password" class="form-control"
+             minlength="8" required autofocus>
+      <small class="form-hint">{% if lang == 'fr' %}Minimum 8 caracteres{% else %}Minimum 8 characters{% endif %}</small>
+    </div>
+
+    <div class="form-group">
+      <label>{% if lang == 'fr' %}Confirmer le mot de passe{% else %}Confirm password{% endif %}</label>
+      <input type="password" name="confirm_password" class="form-control"
+             minlength="8" required>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-full">
+      {{ T.enregistrer }}
+    </button>
+  </form>
+</div>
+
+</body>
+</html>

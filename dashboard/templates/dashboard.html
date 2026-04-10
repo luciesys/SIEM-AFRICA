@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- Compteurs principaux -->
+<div class="stats-grid">
+  <div class="stat-card stat-critical">
+    <div class="stat-nb" data-stat="critiques_actives">{{ stats.critiques_actives }}</div>
+    <div class="stat-lbl">{{ T.critique }}</div>
+  </div>
+  <div class="stat-card stat-high">
+    <div class="stat-nb" data-stat="hautes_actives">{{ stats.hautes_actives }}</div>
+    <div class="stat-lbl">{{ T.haute }}</div>
+  </div>
+  <div class="stat-card stat-medium">
+    <div class="stat-nb" data-stat="moyennes_actives">{{ stats.moyennes_actives }}</div>
+    <div class="stat-lbl">{{ T.moyenne }}</div>
+  </div>
+  <div class="stat-card stat-low">
+    <div class="stat-nb" data-stat="faibles_actives">{{ stats.faibles_actives }}</div>
+    <div class="stat-lbl">{{ T.faible }}</div>
+  </div>
+  <div class="stat-card stat-info">
+    <div class="stat-nb" data-stat="alertes_24h">{{ stats.alertes_24h }}</div>
+    <div class="stat-lbl">{{ T.alertes_24h }}</div>
+  </div>
+  <div class="stat-card stat-blocked">
+    <div class="stat-nb" data-stat="ips_bloquees">{{ stats.ips_bloquees }}</div>
+    <div class="stat-lbl">{{ T.ips_bloquees_nb }}</div>
+  </div>
+  <div class="stat-card stat-unknown">
+    <div class="stat-nb" data-stat="inconnues">{{ stats.inconnues }}</div>
+    <div class="stat-lbl">{{ T.att_inconnues }}</div>
+  </div>
+  <div class="stat-card stat-honeypot">
+    <div class="stat-nb" data-stat="honeypot_24h">{{ stats.honeypot_24h }}</div>
+    <div class="stat-lbl">Honeypot (24h)</div>
+  </div>
+</div>
+
+<!-- Graphique + Categories -->
+<div class="row-2col">
+
+  <!-- Graphique 7 jours -->
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ T.evolution_7j }}</h2>
+    </div>
+    <div class="card-body">
+      <canvas id="graphique7j" height="80"></canvas>
+    </div>
+  </div>
+
+  <!-- Top categories -->
+  <div class="card">
+    <div class="card-header">
+      <h2>{{ T.top_categories }}</h2>
+    </div>
+    <div class="card-body">
+      {% if categories %}
+      {% for cat in categories %}
+      <div class="category-bar">
+        <span class="cat-name">{{ cat.categorie }}</span>
+        <div class="cat-bar-wrap">
+          <div class="cat-bar" style="width: {% widthratio cat.nb categories.0.nb 100 %}%"></div>
+        </div>
+        <span class="cat-nb">{{ cat.nb }}</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="empty-msg">{% if lang == 'fr' %}Aucune donnee{% else %}No data{% endif %}</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Alertes critiques actives -->
+{% if alertes_crit %}
+<div class="card">
+  <div class="card-header">
+    <h2>🚨 {% if lang == 'fr' %}Alertes critiques actives{% else %}Active critical alerts{% endif %}</h2>
+    <a href="/alertes/?gravite=4&statut=Nouveau" class="btn btn-sm">
+      {% if lang == 'fr' %}Voir toutes{% else %}View all{% endif %}
+    </a>
+  </div>
+  <div class="card-body">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>{{ T.alerte }}</th>
+          <th>{{ T.ip_source }}</th>
+          <th>{{ T.pays }}</th>
+          <th>{{ T.machine }}</th>
+          <th>{{ T.heure }}</th>
+          {% if is_admin %}<th>Action</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for a in alertes_crit %}
+        <tr class="row-critical">
+          <td><a href="/alertes/{{ a.id }}/">#{{ a.id }}</a></td>
+          <td>
+            {{ a.nom_attaque }}
+            {% if a.est_honeypot %}<span class="tag tag-honeypot">{{ T.honeypot_tag }}</span>{% endif %}
+            {% if a.est_correllee %}<span class="tag tag-corr">{{ T.correllee_tag }}</span>{% endif %}
+          </td>
+          <td><code>{{ a.ip_source|default:"—" }}</code></td>
+          <td>{{ a.pays_source|default:"—" }}</td>
+          <td>{{ a.machine_nom|default:"—" }}</td>
+          <td>{{ a.timestamp_alerte|slice:":16" }}</td>
+          {% if is_admin %}
+          <td>
+            <button class="btn btn-sm btn-danger"
+                    onclick="doAction({{ a.id }}, 'bloquer_ip')">
+              🚫 {{ T.bloquer_ip }}
+            </button>
+          </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Actions recentes -->
+{% if actions and is_admin %}
+<div class="card">
+  <div class="card-header">
+    <h2>{{ T.actions_recentes }}</h2>
+  </div>
+  <div class="card-body">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>{% if lang == 'fr' %}Date{% else %}Date{% endif %}</th>
+          <th>{% if lang == 'fr' %}Admin{% else %}Admin{% endif %}</th>
+          <th>{% if lang == 'fr' %}Action{% else %}Action{% endif %}</th>
+          <th>IP</th>
+          <th>{% if lang == 'fr' %}Canal{% else %}Channel{% endif %}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for act in actions %}
+        <tr>
+          <td>{{ act.timestamp_action|slice:":16" }}</td>
+          <td>{{ act.username|default:act.admin_username }}</td>
+          <td>{{ act.type_action }}</td>
+          <td><code>{{ act.ip_concernee|default:"—" }}</code></td>
+          <td>
+            <span class="tag tag-canal-{{ act.canal|lower|cut:' ' }}">{{ act.canal }}</span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// Graphique 7 jours
+const ctx7j = document.getElementById('graphique7j');
+if (ctx7j) {
+  new Chart(ctx7j, {
+    type: 'line',
+    data: {
+      labels: {{ graph_labels|safe }},
+      datasets: [{
+        label: '{{ T.alertes_24h }}',
+        data: {{ graph_data|safe }},
+        borderColor: '#e63946',
+        backgroundColor: 'rgba(230,57,70,0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
+// Action sur alerte (depuis dashboard)
+function doAction(alerteId, action, extra) {
+  const formData = new FormData();
+  formData.append('action', action);
+  formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  if (extra) Object.keys(extra).forEach(k => formData.append(k, extra[k]));
+
+  fetch(`/alertes/${alerteId}/action/`, { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        showNotif(data.msg, 'success');
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        showNotif(data.msg, 'error');
+      }
+    });
+}
+
+function showNotif(msg, type) {
+  const n = document.createElement('div');
+  n.className = `notif notif-${type}`;
+  n.textContent = msg;
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), 3000);
+}
+</script>
+{% endblock %}
