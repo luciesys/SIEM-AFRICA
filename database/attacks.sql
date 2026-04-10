@@ -2044,3 +2044,74 @@ VALUES
 'Phishing ciblant Free Money Mobile au Sénégal.',
 'Phishing targeting Free Mobile Money in Senegal.',
 3,'Alerter',NULL,0,'Custom','TCP',80,NULL,'Commune');
+
+-- ================================================================
+-- MAPPING MITRE ATT&CK
+-- Ajout des identifiants MITRE sur toutes les signatures
+-- ================================================================
+
+-- Brute Force
+UPDATE attaques SET mitre_id='T1110',     mitre_tactique='Credential Access'   WHERE categorie='Brute Force';
+UPDATE attaques SET mitre_id='T1110.001', mitre_tactique='Credential Access'   WHERE categorie='Brute Force' AND (nom LIKE '%Dictionnaire%' OR nom LIKE '%Password Spray%');
+UPDATE attaques SET mitre_id='T1110.004', mitre_tactique='Credential Access'   WHERE categorie='Brute Force' AND nom LIKE '%SSH%';
+UPDATE attaques SET mitre_id='T1110.003', mitre_tactique='Credential Access'   WHERE categorie='Brute Force' AND nom LIKE '%RDP%';
+
+-- Web Attack
+UPDATE attaques SET mitre_id='T1190',     mitre_tactique='Initial Access'      WHERE categorie='Web Attack';
+UPDATE attaques SET mitre_id='T1059.007', mitre_tactique='Execution'           WHERE categorie='Web Attack' AND (nom LIKE '%XSS%' OR nom LIKE '%Script%');
+UPDATE attaques SET mitre_id='T1505.003', mitre_tactique='Persistence'         WHERE categorie='Web Attack' AND nom LIKE '%Webshell%';
+UPDATE attaques SET mitre_id='T1190',     mitre_tactique='Initial Access'      WHERE categorie='Web Attack' AND nom LIKE '%Log4%';
+
+-- Reconnaissance
+UPDATE attaques SET mitre_id='T1046',     mitre_tactique='Discovery'           WHERE categorie='Reconnaissance';
+UPDATE attaques SET mitre_id='T1595.001', mitre_tactique='Reconnaissance'      WHERE categorie='Reconnaissance' AND nom LIKE '%Nmap%';
+UPDATE attaques SET mitre_id='T1595.002', mitre_tactique='Reconnaissance'      WHERE categorie='Reconnaissance' AND nom LIKE '%Masscan%';
+UPDATE attaques SET mitre_id='T1592',     mitre_tactique='Reconnaissance'      WHERE categorie='Reconnaissance' AND nom LIKE '%WPScan%';
+
+-- Ransomware
+UPDATE attaques SET mitre_id='T1486',     mitre_tactique='Impact'              WHERE categorie='Ransomware';
+UPDATE attaques SET mitre_id='T1490',     mitre_tactique='Impact'              WHERE categorie='Ransomware' AND nom LIKE '%Shadow%';
+
+-- Malware
+UPDATE attaques SET mitre_id='T1059',     mitre_tactique='Execution'           WHERE categorie='Malware';
+UPDATE attaques SET mitre_id='T1071',     mitre_tactique='Command and Control' WHERE categorie='Malware' AND (nom LIKE '%RAT%' OR nom LIKE '%Remote%');
+UPDATE attaques SET mitre_id='T1055',     mitre_tactique='Defense Evasion'     WHERE categorie='Malware' AND nom LIKE '%Inject%';
+
+-- C2
+UPDATE attaques SET mitre_id='T1071',     mitre_tactique='Command and Control' WHERE categorie='C2';
+UPDATE attaques SET mitre_id='T1071.004', mitre_tactique='Command and Control' WHERE categorie='C2' AND nom LIKE '%DNS%';
+UPDATE attaques SET mitre_id='T1095',     mitre_tactique='Command and Control' WHERE categorie='C2' AND nom LIKE '%Cobalt%';
+
+-- Phishing
+UPDATE attaques SET mitre_id='T1566',     mitre_tactique='Initial Access'      WHERE categorie='Phishing';
+UPDATE attaques SET mitre_id='T1566.002', mitre_tactique='Initial Access'      WHERE categorie='Phishing' AND nom LIKE '%lien%';
+UPDATE attaques SET mitre_id='T1598',     mitre_tactique='Reconnaissance'      WHERE categorie='BEC';
+
+-- Privilege Escalation
+UPDATE attaques SET mitre_id='T1068',     mitre_tactique='Privilege Escalation' WHERE categorie='Privilege Escalation';
+UPDATE attaques SET mitre_id='T1548.003', mitre_tactique='Privilege Escalation' WHERE categorie='Privilege Escalation' AND nom LIKE '%Sudo%';
+UPDATE attaques SET mitre_id='T1547',     mitre_tactique='Persistence'          WHERE categorie='Privilege Escalation' AND nom LIKE '%SUID%';
+
+-- Lateral Movement
+UPDATE attaques SET mitre_id='T1021',     mitre_tactique='Lateral Movement'    WHERE categorie='Lateral Movement';
+UPDATE attaques SET mitre_id='T1550',     mitre_tactique='Lateral Movement'    WHERE categorie='Lateral Movement' AND nom LIKE '%Hash%';
+UPDATE attaques SET mitre_id='T1558',     mitre_tactique='Credential Access'   WHERE categorie='Lateral Movement' AND nom LIKE '%Kerberos%';
+
+-- Exfiltration
+UPDATE attaques SET mitre_id='T1041',     mitre_tactique='Exfiltration'        WHERE categorie='Exfiltration';
+UPDATE attaques SET mitre_id='T1048.003', mitre_tactique='Exfiltration'        WHERE categorie='Exfiltration' AND nom LIKE '%DNS%';
+UPDATE attaques SET mitre_id='T1567',     mitre_tactique='Exfiltration'        WHERE categorie='Exfiltration' AND nom LIKE '%Cloud%';
+
+-- DDoS et DoS
+UPDATE attaques SET mitre_id='T1498',     mitre_tactique='Impact'              WHERE categorie='DDoS';
+UPDATE attaques SET mitre_id='T1499',     mitre_tactique='Impact'              WHERE categorie='DoS';
+
+-- Mobile
+UPDATE attaques SET mitre_id='T1566',     mitre_tactique='Initial Access'      WHERE categorie='Mobile';
+
+-- Intrusion
+UPDATE attaques SET mitre_id='T1190',     mitre_tactique='Initial Access'      WHERE categorie='Intrusion';
+UPDATE attaques SET mitre_id='T1203',     mitre_tactique='Execution'           WHERE categorie='Intrusion' AND nom LIKE '%Exploit%';
+
+-- Crypto
+UPDATE attaques SET mitre_id='T1496',     mitre_tactique='Impact'              WHERE categorie='Crypto';
