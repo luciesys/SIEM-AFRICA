@@ -2,7 +2,15 @@
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
 #  Fichier  : agent/install.sh
+#  Version  : 2.1 — Corrections majeures
 #
+#  Corrections :
+#  [1] ProtectSystem=strict supprime -> causait CHDIR 200
+#  [2] PrivateTmp=yes supprime -> causait CHDIR 200
+#  [3] NoNewPrivileges=yes supprime -> causait CHDIR 200
+#  [4] chmod 755 sur AGENT_DIR (etait 750 -> bloquait CHDIR)
+#  [5] chmod 755 sur /opt/siem-africa/ (dossier parent)
+#  [6] Detection MDP Wazuh : 4 methodes + saisie manuelle
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -299,6 +307,16 @@ install_agent() {
     if [ -d "/var/log/snort" ]; then
         setfacl -R -m u:"${USER_AGENT}":rX /var/log/snort 2>/dev/null || \
             chmod o+rX /var/log/snort 2>/dev/null || true
+
+    # Acces alerts.json Wazuh (lecture directe — plus d'API REST)
+    usermod -aG wazuh "${USER_AGENT}" 2>/dev/null || true
+    mkdir -p /var/ossec/logs/alerts 2>/dev/null || true
+    chmod o+rX /var/ossec/logs/alerts 2>/dev/null || true
+    [ -f /var/ossec/logs/alerts/alerts.json ] && \
+        chmod o+r /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+    [ -f /var/ossec/etc/client.keys ] && \
+        chmod o+r /var/ossec/etc/client.keys 2>/dev/null || true
+    log_ok "Acces fichiers Wazuh configure (alerts.json)"
     fi
 
     # ── Service systemd ───────────────────────────────────────────
