@@ -244,76 +244,123 @@ def _mettre_a_jour_env(cle, valeur):
         pass
 
 # ================================================================
-# 3. CLIENT WAZUH API
+# 3. LECTEUR ALERTES WAZUH — fichier log direct
+#    Plus fiable que l'API REST pour Wazuh 4.7.5
+#    Lit /var/ossec/logs/alerts/alerts.json en temps reel
 # ================================================================
-class WazuhClient:
+class WazuhLogReader:
+    """
+    Lit les alertes directement depuis le fichier JSON de Wazuh.
+    Fonctionne avec toutes les versions de Wazuh sans probleme d'API.
+    """
+
+    ALERT_LOG  = '/var/ossec/logs/alerts/alerts.json'
+    AGENTS_LOG = '/var/ossec/etc/client.keys'
 
     def __init__(self, host, port, user, password, log):
-        self.base_url  = f'https://{host}:{port}'
-        self.user      = user
-        self.password  = password
-        self.token     = None
-        self.token_ts  = 0
-        self.log       = log
-        self.ctx       = ssl.create_default_context()
-        self.ctx.check_hostname = False
-        self.ctx.verify_mode    = ssl.CERT_NONE
+        self.log         = log
+        self.position    = 0   # position de lecture dans le fichier
+        self._init_position()
 
-    def _requete(self, method, endpoint, headers=None):
-        url = f'{self.base_url}{endpoint}'
-        req = urllib.request.Request(url, headers=headers or {}, method=method)
+    def _init_position(self):
+        """Demarre a la fin du fichier pour ne lire que les nouvelles alertes"""
         try:
-            with urllib.request.urlopen(req, context=self.ctx, timeout=10) as r:
-                return json.loads(r.read().decode())
-        except urllib.error.HTTPError as e:
-            body = e.read().decode('utf-8', errors='ignore')
-            self.log.error(f'HTTP {e.code} sur {endpoint}: {body[:150]}')
-            return None
+            if os.path.exists(self.ALERT_LOG):
+                self.position = os.path.getsize(self.ALERT_LOG)
+                self.log.info(
+                    f'Lecteur log Wazuh initialise — position : {self.position} octets')
+            else:
+                self.log.warning(
+                    f'Fichier alertes Wazuh absent : {self.ALERT_LOG}')
+                self.position = 0
         except Exception as e:
-            self.log.error(f'Erreur requete {endpoint}: {e}')
-            return None
+            self.log.error(f'Erreur init lecteur : {e}')
+            self.position = 0
 
     def authentifier(self):
-        import base64
-        creds = base64.b64encode(f'{self.user}:{self.password}'.encode()).decode()
-        r = self._requete('GET', '/security/user/authenticate',
-                          headers={'Authorization': f'Basic {creds}'})
-        if r and 'data' in r:
-            self.token    = r['data']['token']
-            self.token_ts = time.time()
-            self.log.info('Token Wazuh obtenu')
+        """Compatibilite — verifie juste que le fichier existe"""
+        if os.path.exists(self.ALERT_LOG):
+            self.log.info(
+                f'Lecture alertes depuis : {self.ALERT_LOG}')
             return True
-        self.log.error('Echec authentification Wazuh')
-        return False
-
-    def get_token(self):
-        if not self.token or (time.time() - self.token_ts) > 870:
-            self.authentifier()
-        return self.token
+        self.log.warning(
+            f'Fichier alertes non trouve : {self.ALERT_LOG} — '
+            f'Wazuh genere ce fichier quand des alertes sont detectees')
+        return True  # Ne pas bloquer le demarrage
 
     def get_alertes(self, depuis_ts=None, limit=100):
-        token = self.get_token()
-        if not token:
+        """
+        Lit les nouvelles lignes du fichier alerts.json
+        Chaque ligne est une alerte JSON complete
+        """
+        alertes = []
+
+        if not os.path.exists(self.ALERT_LOG):
             return []
-        params = f'?limit={limit}&sort=-timestamp'
-        if depuis_ts:
-            params += f'&q=timestamp>{depuis_ts}'
-        for endpoint in [f'/security/events{params}', f'/alerts{params}']:
-            r = self._requete('GET', endpoint,
-                              headers={'Authorization': f'Bearer {token}'})
-            if r and 'data' in r:
-                return r['data'].get('affected_items', [])
-        return []
+
+        try:
+            taille_actuelle = os.path.getsize(self.ALERT_LOG)
+
+            # Rotation du fichier (Wazuh le recrée chaque jour)
+            if taille_actuelle < self.position:
+                self.log.info('Rotation fichier alertes Wazuh detectee')
+                self.position = 0
+
+            if taille_actuelle == self.position:
+                return []  # Aucune nouvelle alerte
+
+            with open(self.ALERT_LOG, 'r', errors='ignore') as f:
+                f.seek(self.position)
+                lignes = f.readlines()
+                self.position = f.tell()
+
+            for ligne in lignes:
+                ligne = ligne.strip()
+                if not ligne:
+                    continue
+                try:
+                    alerte = json.loads(ligne)
+                    alertes.append(alerte)
+                    if len(alertes) >= limit:
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+        except PermissionError:
+            self.log.error(
+                f'Permission refusee : {self.ALERT_LOG}\n'
+                f'  Solution : sudo usermod -aG wazuh siem-agent\n'
+                f'  Puis     : sudo systemctl restart siem-agent')
+        except Exception as e:
+            self.log.error(f'Erreur lecture alertes : {e}')
+
+        return alertes
 
     def get_agents(self):
-        token = self.get_token()
-        if not token:
-            return []
-        r = self._requete('GET', '/agents?limit=500',
-                          headers={'Authorization': f'Bearer {token}'})
-        if r and 'data' in r:
-            return r['data'].get('affected_items', [])
-        return []
+        """Lit les agents depuis client.keys"""
+        agents = []
+        try:
+            if not os.path.exists(self.AGENTS_LOG):
+                return []
+            with open(self.AGENTS_LOG, 'r', errors='ignore') as f:
+                for ligne in f:
+                    ligne = ligne.strip()
+                    if not ligne or ligne.startswith('#'):
+                        continue
+                    parts = ligne.split()
+                    if len(parts) >= 4:
+                        agents.append({
+                            'id':     parts[0],
+                            'name':   parts[1],
+                            'ip':     parts[2],
+                            'status': 'active',
+                        })
+        except Exception as e:
+            self.log.error(f'Erreur lecture agents : {e}')
+        return agents
+
+# Alias pour compatibilite avec le reste du code
+WazuhClient = WazuhLogReader
 
 # ================================================================
 # 4. BASE DE DONNEES
@@ -1085,8 +1132,13 @@ def geolocate_ip(ip):
 # PARSEUR ALERTES WAZUH
 # ================================================================
 def parser_alerte(raw):
+    """
+    Parse une alerte depuis le fichier alerts.json de Wazuh.
+    Format natif Wazuh — plus besoin de passer par l'API.
+    """
     if not raw:
         return None
+
     r = {
         'timestamp_alerte': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'rule_id':          None,
@@ -1103,6 +1155,7 @@ def parser_alerte(raw):
         'gravite_wazuh':    0,
     }
 
+    # Timestamp
     ts = raw.get('timestamp', '')
     if ts:
         try:
@@ -1111,27 +1164,59 @@ def parser_alerte(raw):
         except Exception:
             pass
 
-    rule                   = raw.get('rule', {})
+    # Regle Wazuh
+    rule = raw.get('rule', {})
     r['rule_id']           = rule.get('id')
     r['description_wazuh'] = rule.get('description', '')
     r['gravite_wazuh']     = rule.get('level', 0)
 
-    agent             = raw.get('agent', {})
-    r['agent_id']     = agent.get('id', '')
-    r['machine_nom']  = agent.get('name', '')
+    # Agent
+    agent = raw.get('agent', {})
+    r['agent_id']    = agent.get('id', '')
+    r['machine_nom'] = agent.get('name', '')
 
+    # Informations reseau dans plusieurs formats Wazuh
+    # Format 1 : champ data
     data = raw.get('data', {})
-    r['ip_source']       = (data.get('srcip') or data.get('src_ip') or
-                             (data.get('source', {}).get('ip') if isinstance(data.get('source'), dict) else None))
-    r['ip_destination']  = (data.get('dstip') or data.get('dst_ip'))
-    r['port_source']     = data.get('srcport') or data.get('src_port')
-    r['port_destination']= data.get('dstport') or data.get('dst_port')
-    r['protocole']       = data.get('protocol') or data.get('proto')
+    if isinstance(data, dict):
+        r['ip_source']        = (data.get('srcip') or data.get('src_ip') or
+                                  data.get('source_ip'))
+        r['ip_destination']   = (data.get('dstip') or data.get('dst_ip') or
+                                  data.get('dest_ip'))
+        r['port_source']      = data.get('srcport') or data.get('src_port')
+        r['port_destination'] = data.get('dstport') or data.get('dst_port')
+        r['protocole']        = data.get('protocol') or data.get('proto')
 
-    snort = data.get('snort', {})
-    if isinstance(snort, dict):
-        r['sid_snort'] = snort.get('sid')
+        # Snort SID dans data.snort
+        snort = data.get('snort', {})
+        if isinstance(snort, dict):
+            r['sid_snort'] = snort.get('sid')
 
+    # Format 2 : champ network (Wazuh 4.x)
+    network = raw.get('network', {})
+    if isinstance(network, dict) and not r['ip_source']:
+        src = network.get('source', {})
+        dst = network.get('destination', {})
+        if isinstance(src, dict):
+            r['ip_source']   = src.get('ip')
+            r['port_source'] = src.get('port')
+        if isinstance(dst, dict):
+            r['ip_destination']   = dst.get('ip')
+            r['port_destination'] = dst.get('port')
+
+    # Format 3 : champ source_ip direct (Snort via Wazuh)
+    if not r['ip_source']:
+        r['ip_source'] = (raw.get('source_ip') or
+                          raw.get('srcip') or
+                          raw.get('src_ip'))
+
+    # OS agent
+    if isinstance(raw.get('agent'), dict):
+        os_info = raw['agent'].get('labels', {})
+        if isinstance(os_info, dict):
+            r['machine_os'] = os_info.get('os.name', '')
+
+    # Convertir rule_id en entier
     if r['rule_id']:
         try:
             r['rule_id'] = int(r['rule_id'])
