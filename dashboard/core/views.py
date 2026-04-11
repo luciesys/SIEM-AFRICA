@@ -37,11 +37,11 @@ def login_view(request):
     tr   = T(lang)
 
     if request.method == 'POST':
-        email    = request.POST.get('email', '').strip().lower()
+        username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '').strip()
         lang     = request.POST.get('lang', 'fr')
 
-        user = DB.get_user(email)
+        user = DB.get_user(username)
         if not user:
             return render(request, 'login.html',
                           {'erreur': tr['erreur_login'], 'T': tr, 'lang': lang})
@@ -58,18 +58,18 @@ def login_view(request):
 
         # Verifier MDP
         if not DB.verifier_mot_de_passe(password, user['password_hash']):
-            DB.incrementer_echec(email)
+            DB.incrementer_echec(username)
             return render(request, 'login.html',
                           {'erreur': tr['erreur_login'], 'T': tr, 'lang': lang})
 
-        DB.reset_echecs(email)
+        DB.reset_echecs(username)
 
         # Session
-        request.session['user_id']            = user['id']
-        request.session['username']           = user['email']
-        request.session['role']               = user['role']
-        request.session['lang']               = user.get('langue') or lang
-        request.session['premiere_connexion'] = bool(user['premiere_connexion'])
+        request.session['user_id']           = user['id']
+        request.session['username']          = user['email']  # email = identifiant permanent
+        request.session['role']              = user['role']
+        request.session['lang']              = user.get('langue') or lang
+        request.session['premiere_connexion']= bool(user['premiere_connexion'])
 
         if user['premiere_connexion']:
             return redirect('/premiere-connexion/')
@@ -90,27 +90,29 @@ def premiere_connexion_view(request):
     tr   = T(lang)
 
     if request.method == 'POST':
+        new_user = request.POST.get('new_username', '').strip()
         new_pass = request.POST.get('new_password', '').strip()
         confirm  = request.POST.get('confirm_password', '').strip()
         uid      = request.session.get('user_id')
 
         erreur = None
-        if len(new_pass) < 8:
+        if len(new_user) < 4:
+            erreur = 'Nom d\'utilisateur trop court (minimum 4 caracteres)' if lang == 'fr' else 'Username too short (min 4 characters)'
+        elif len(new_pass) < 8:
             erreur = 'Mot de passe trop court (minimum 8 caracteres)' if lang == 'fr' else 'Password too short (min 8 characters)'
         elif new_pass != confirm:
             erreur = 'Les mots de passe ne correspondent pas' if lang == 'fr' else 'Passwords do not match'
+        elif DB.username_existe(new_user, exclude_id=uid):
+            erreur = 'Ce nom d\'utilisateur est deja pris' if lang == 'fr' else 'Username already taken'
 
         if erreur:
             return render(request, 'premiere_connexion.html',
                           {'erreur': erreur, 'T': tr, 'lang': lang})
 
         hashed = DB.hasher_mot_de_passe(new_pass)
-        # Changer uniquement le MDP — l'email reste le login
-        with DB.conn() as c:
-            c.execute(
-                'UPDATE utilisateurs SET password_hash=?, premiere_connexion=0 WHERE id=?',
-                (hashed, uid))
-        request.session['premiere_connexion'] = False
+        DB.changer_credentials(uid, new_user, hashed)
+        # username = email, ne change pas
+        request.session['premiere_connexion']= False
         return redirect('/')
 
     return render(request, 'premiere_connexion.html', {'T': tr, 'lang': lang})
