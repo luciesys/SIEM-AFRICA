@@ -16,12 +16,11 @@ def conn():
 
 
 # ── Authentification ──────────────────────────────────────────────
-def get_user(email):
-    """Authentification par email"""
+def get_user(username):
     with conn() as c:
         return c.execute(
-            'SELECT * FROM utilisateurs WHERE email=? AND est_actif=1',
-            (email,)).fetchone()
+            'SELECT * FROM utilisateurs WHERE username=? AND est_actif=1',
+            (username,)).fetchone()
 
 def get_user_by_id(uid):
     with conn() as c:
@@ -43,39 +42,41 @@ def hasher_mot_de_passe(password):
         import hashlib
         return hashlib.sha256(password.encode()).hexdigest()
 
-def incrementer_echec(email):
+def incrementer_echec(username):
     with conn() as c:
         c.execute(
-            'UPDATE utilisateurs SET tentatives_echec=tentatives_echec+1 WHERE email=?',
-            (email,))
+            'UPDATE utilisateurs SET tentatives_echec=tentatives_echec+1 WHERE username=?',
+            (username,))
         u = c.execute(
-            'SELECT tentatives_echec FROM utilisateurs WHERE email=?',
-            (email,)).fetchone()
+            'SELECT tentatives_echec FROM utilisateurs WHERE username=?',
+            (username,)).fetchone()
         if u and u['tentatives_echec'] >= 5:
             bloque = (datetime.datetime.now() + datetime.timedelta(minutes=30)).isoformat()
             c.execute(
-                'UPDATE utilisateurs SET bloque_jusqua=? WHERE email=?',
-                (bloque, email))
+                'UPDATE utilisateurs SET bloque_jusqua=? WHERE username=?',
+                (bloque, username))
 
-def reset_echecs(email):
+def reset_echecs(username):
     with conn() as c:
         c.execute(
-            "UPDATE utilisateurs SET tentatives_echec=0, bloque_jusqua=NULL, derniere_connexion=? WHERE email=?",
-            (datetime.datetime.now().isoformat(), email))
+            "UPDATE utilisateurs SET tentatives_echec=0, bloque_jusqua=NULL, derniere_connexion=? WHERE username=?",
+            (datetime.datetime.now().isoformat(), username))
 
 def changer_credentials(uid, new_username, new_password_hash):
+    """Change le mot de passe — email reste le login permanent"""
     with conn() as c:
         c.execute(
-            'UPDATE utilisateurs SET username=?, password_hash=?, premiere_connexion=0 WHERE id=?',
-            (new_username, new_password_hash, uid))
+            'UPDATE utilisateurs SET password_hash=?, premiere_connexion=0 WHERE id=?',
+            (new_password_hash, uid))
 
 def username_existe(username, exclude_id=None):
+    """Verifie si un email existe deja"""
     with conn() as c:
         if exclude_id:
-            r = c.execute('SELECT id FROM utilisateurs WHERE username=? AND id!=?',
+            r = c.execute('SELECT id FROM utilisateurs WHERE email=? AND id!=?',
                           (username, exclude_id)).fetchone()
         else:
-            r = c.execute('SELECT id FROM utilisateurs WHERE username=?',
+            r = c.execute('SELECT id FROM utilisateurs WHERE email=?',
                           (username,)).fetchone()
         return r is not None
 
