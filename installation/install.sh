@@ -2,14 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh Manager
 #  Fichier  : installation/install.sh
-#  Version  : 3.0 — Réécriture complete
 #  Usage    : sudo bash install.sh
-#
-#  Ce script installe :
-#  - Snort IDS (detection d'intrusion reseau)
-#  - Wazuh Manager (SIEM + collecte alertes)
-#  - Liaison Snort → Wazuh via ossec.conf
-#  - Groupe central siem-africa (droits partages)
 # ================================================================
 
 # Pas de set -e — gestion d'erreurs explicite
@@ -451,10 +444,22 @@ install_snort() {
         log_ok "$(msg "HOME_NET configure : $LOCAL_NET" "HOME_NET set: $LOCAL_NET")"
     fi
 
-    # Creer les fichiers de regles manquants
+    # Creer TOUS les dossiers et fichiers de regles requis par snort.conf
+    mkdir -p /etc/snort/rules /etc/snort/so_rules /etc/snort/preproc_rules
+
     for f in white_list.rules black_list.rules local.rules; do
         touch "/etc/snort/rules/$f"
     done
+
+    # Corriger les chemins dans snort.conf pour pointer vers les bons dossiers
+    if [ -f /etc/snort/snort.conf ]; then
+        sed -i 's|^var RULE_PATH .*|var RULE_PATH /etc/snort/rules|'         /etc/snort/snort.conf
+        sed -i 's|^var SO_RULE_PATH .*|var SO_RULE_PATH /etc/snort/so_rules|' /etc/snort/snort.conf
+        sed -i 's|^var PREPROC_RULE_PATH .*|var PREPROC_RULE_PATH /etc/snort/preproc_rules|'             /etc/snort/snort.conf
+        sed -i 's|^var WHITE_LIST_PATH .*|var WHITE_LIST_PATH /etc/snort/rules|' /etc/snort/snort.conf
+        sed -i 's|^var BLACK_LIST_PATH .*|var BLACK_LIST_PATH /etc/snort/rules|' /etc/snort/snort.conf
+        log_ok "$(msg 'Chemins des regles Snort corriges' 'Snort rules paths fixed')"
+    fi
 
     # Droits sur les logs
     chown -R root:root /var/log/snort
