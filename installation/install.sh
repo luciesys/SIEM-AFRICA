@@ -2,7 +2,15 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
 #  Fichier  : installation/install.sh
+#  Version  : 2.2 — Refonte complete
 #  Usage    : sudo bash install.sh
+#
+#  Corrections v2.2 :
+#  - Groupe siem-africa cree en premier (resout tous les pb droits)
+#  - Wazuh Manager uniquement (pas d'indexer ni dashboard Wazuh)
+#  - Sans set -e — gestion d'erreurs explicite
+#  - Permissions /opt/siem-africa/ correctes des le depart
+#  - Detection interface reseau automatique
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -355,51 +363,52 @@ SNORTCONF
 }
 
 # ================================================================
-# ETAPE 4 : Installation Wazuh complet
-#           Manager + Indexer + Dashboard
+# ETAPE 4 : Installation Wazuh Manager uniquement
+#           Mode leger — sans Indexer ni Dashboard
 # ================================================================
 install_wazuh() {
-    log_etape "4/7" "INSTALLATION WAZUH MANAGER UNIQUEMENT"
-    log_info "Composant : Manager uniquement (leger, rapide)"
-    log_warn "Cette etape peut prendre 10 a 20 minutes selon votre connexion."
+    log_etape "4/7" "INSTALLATION WAZUH MANAGER (mode leger)"
+    log_info "Installation : Wazuh Manager uniquement — sans Indexer ni Dashboard"
+    log_warn "Cette etape prend 10 a 20 minutes selon votre connexion."
     echo ""
 
-    # Telecharger le script officiel Wazuh
-    log_info "Telechargement du script d'installation Wazuh..."
-    # URL officielle du script Wazuh all-in-one
-    WAZUH_SCRIPT_URL="https://packages.wazuh.com/4.x/wazuh-install.sh"
+    # URL officielle Wazuh
+    WAZUH_SCRIPT_URL="https://packages.wazuh.com/4.14/wazuh-install.sh"
 
-    curl -sO "$WAZUH_SCRIPT_URL" 2>/dev/null || \
+    log_info "Telechargement depuis $WAZUH_SCRIPT_URL ..."
+    curl -sL "$WAZUH_SCRIPT_URL" -o wazuh-install.sh 2>/dev/null || \
     wget -q  "$WAZUH_SCRIPT_URL" -O wazuh-install.sh 2>/dev/null || \
-        quitter "Impossible de telecharger le script Wazuh"
+        quitter "Impossible de telecharger le script Wazuh — verifiez votre connexion"
 
-    [ ! -f wazuh-install.sh ] && quitter "Script wazuh-install.sh non telecharge"
+    # Verifier que c'est bien un script bash et pas une page d'erreur XML HTML
+    [ ! -f wazuh-install.sh ] && quitter "Fichier wazuh-install.sh absent"
+    FIRST_LINE=$(head -1 wazuh-install.sh)
+    echo "$FIRST_LINE" | grep -q "^#!" || \
+        quitter "Fichier telecharge invalide (page erreur XML ?). Verifiez connexion internet."
+
     chmod +x wazuh-install.sh
-    log_ok "Script Wazuh telecharge depuis $WAZUH_SCRIPT_URL"
+    log_ok "Script Wazuh telecharge et valide"
 
-    # -a = all-in-one : Manager + Indexer + Dashboard (les 3 composants)
-    # Sans -a, le script n'installe QUE le manager
-    log_info "Installation Wazuh all-in-one : Manager + Indexer + Dashboard..."
-    bash wazuh-install.sh -a 2>&1 | tee -a "$LOG_FILE" | \
-        grep -E "INFO|ERROR|WARNING|Starting|Complete|Password|Install" || true
+    # -wm = Wazuh Manager uniquement
+    log_info "Lancement installation Wazuh Manager..."
+    bash wazuh-install.sh -wm 2>&1 | tee -a "$LOG_FILE" | \
+        grep -E "INFO|ERROR|WARNING|Starting|Complete|Password" || true
 
     # Verifier l'installation
     if [ ! -d /var/ossec ]; then
-        quitter "Wazuh non installe — verifier le journal"
+        quitter "Wazuh Manager non installe — verifier le journal"
     fi
 
     WAZUH_VER=$(/var/ossec/bin/wazuh-control info 2>/dev/null | \
         grep WAZUH_VERSION | cut -d'=' -f2 | tr -d '"' || echo "?")
-    log_ok "Wazuh installe : $WAZUH_VER"
+    log_ok "Wazuh Manager installe : $WAZUH_VER"
 
     # Verifier le service
-    for svc in wazuh-manager; do
-        if systemctl is-active --quiet "$svc" 2>/dev/null; then
-            log_ok "Service $svc ACTIF"
-        else
-            log_warn "Service $svc non actif"
-        fi
-    done
+    if systemctl is-active --quiet wazuh-manager 2>/dev/null; then
+        log_ok "Service wazuh-manager ACTIF"
+    else
+        log_warn "Service wazuh-manager non actif"
+    fi
 
     # Configuration supplementaire
     _configurer_wazuh
