@@ -2,15 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
 #  Fichier  : installation/install.sh
-#  Version  : 2.2 — Refonte complete
 #  Usage    : sudo bash install.sh
-#
-#  Corrections v2.2 :
-#  - Groupe siem-africa cree en premier (resout tous les pb droits)
-#  - Wazuh Manager uniquement (pas d'indexer ni dashboard Wazuh)
-#  - Sans set -e — gestion d'erreurs explicite
-#  - Permissions /opt/siem-africa/ correctes des le depart
-#  - Detection interface reseau automatique
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -230,14 +222,18 @@ CREDS
 install_snort() {
     log_etape "3/7" "INSTALLATION SNORT"
 
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    log_info "[3.1] Mise a jour des paquets systeme..."
+    apt-get update 2>&1 | grep -c "Hit\|Get" | xargs -I{} log_info "  {} sources mises a jour"
+
+    log_info "[3.2] Installation de Snort et ses dependances..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
         snort \
         snort-rules-default \
         libpcap-dev \
         libpcre3-dev \
         libdumbnet-dev \
-        build-essential > /dev/null 2>&1
+        build-essential 2>&1 | \
+        grep -E "Unpacking|Setting up|installed|Preparing" || true
 
     if command -v snort > /dev/null 2>&1; then
         SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
@@ -363,54 +359,80 @@ SNORTCONF
 }
 
 # ================================================================
-# ETAPE 4 : Installation Wazuh Manager uniquement
-#           Mode leger — sans Indexer ni Dashboard
+# ETAPE 4 : Installation Wazuh Manager via APT (methode directe)
 # ================================================================
 install_wazuh() {
-    log_etape "4/7" "INSTALLATION WAZUH MANAGER (mode leger)"
-    log_info "Installation : Wazuh Manager uniquement — sans Indexer ni Dashboard"
+    log_etape "4/7" "INSTALLATION WAZUH MANAGER"
+    log_info "Methode : Installation directe via apt (plus fiable)"
     log_warn "Cette etape prend 10 a 20 minutes selon votre connexion."
     echo ""
 
-    # URL officielle Wazuh
-    WAZUH_SCRIPT_URL="https://packages.wazuh.com/4.14/wazuh-install.sh"
+    # ── Etape 4.1 : Cle GPG Wazuh ────────────────────────────────
+    log_info "[4.1] Ajout de la cle GPG Wazuh..."
+    curl -sL https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+        gpg --dearmor -o /usr/share/keyrings/wazuh.gpg 2>/dev/null || \
+    wget -qO- https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+        gpg --dearmor -o /usr/share/keyrings/wazuh.gpg 2>/dev/null
 
-    log_info "Telechargement depuis $WAZUH_SCRIPT_URL ..."
-    curl -sL "$WAZUH_SCRIPT_URL" -o wazuh-install.sh 2>/dev/null || \
-    wget -q  "$WAZUH_SCRIPT_URL" -O wazuh-install.sh 2>/dev/null || \
-        quitter "Impossible de telecharger le script Wazuh — verifiez votre connexion"
+    if [ ! -f /usr/share/keyrings/wazuh.gpg ]; then
+        quitter "Impossible de telecharger la cle GPG Wazuh — verifiez votre connexion"
+    fi
+    log_ok "Cle GPG Wazuh ajoutee"
 
-    # Verifier que c'est bien un script bash et pas une page d'erreur XML HTML
-    [ ! -f wazuh-install.sh ] && quitter "Fichier wazuh-install.sh absent"
-    FIRST_LINE=$(head -1 wazuh-install.sh)
-    echo "$FIRST_LINE" | grep -q "^#!" || \
-        quitter "Fichier telecharge invalide (page erreur XML ?). Verifiez connexion internet."
+    # ── Etape 4.2 : Depot Wazuh ───────────────────────────────────
+    log_info "[4.2] Ajout du depot Wazuh..."
+    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] \
+https://packages.wazuh.com/4.x/apt/ stable main" | \
+        tee /etc/apt/sources.list.d/wazuh.list > /dev/null
+    log_ok "Depot Wazuh ajoute : packages.wazuh.com/4.x/apt/"
 
-    chmod +x wazuh-install.sh
-    log_ok "Script Wazuh telecharge et valide"
+    # ── Etape 4.3 : Mise a jour apt ───────────────────────────────
+    log_info "[4.3] Mise a jour de la liste des paquets..."
+    apt-get update 2>&1 | grep -E "wazuh|Err|Hit|Get" | head -5 || true
+    log_ok "Liste des paquets mise a jour"
 
-    # -wm = Wazuh Manager uniquement
-    log_info "Lancement installation Wazuh Manager..."
-    bash wazuh-install.sh -wm 2>&1 | tee -a "$LOG_FILE" | \
-        grep -E "INFO|ERROR|WARNING|Starting|Complete|Password" || true
+    # ── Etape 4.4 : Installation Wazuh Manager ────────────────────
+    log_info "[4.4] Installation de wazuh-manager..."
+    log_info "Vous allez voir defiler l'installation — c'est normal."
+    echo ""
 
-    # Verifier l'installation
+    DEBIAN_FRONTEND=noninteractive apt-get install -y wazuh-manager 2>&1 | \
+        tee -a "$LOG_FILE" | \
+        grep -E "Unpacking|Setting up|installed|Preparing|Get:|Err" || true
+
+    echo ""
+
+    # ── Verification ─────────────────────────────────────────────
     if [ ! -d /var/ossec ]; then
-        quitter "Wazuh Manager non installe — verifier le journal"
+        log_err "Wazuh Manager non installe. Logs apt :"
+        tail -20 /var/log/apt/term.log 2>/dev/null | tee -a "$LOG_FILE" || true
+        quitter "Wazuh Manager non installe — voir logs ci-dessus"
     fi
 
     WAZUH_VER=$(/var/ossec/bin/wazuh-control info 2>/dev/null | \
-        grep WAZUH_VERSION | cut -d'=' -f2 | tr -d '"' || echo "?")
-    log_ok "Wazuh Manager installe : $WAZUH_VER"
+        grep WAZUH_VERSION | cut -d'=' -f2 | tr -d '"' || echo "inconnue")
+    log_ok "Wazuh Manager installe : version $WAZUH_VER"
 
-    # Verifier le service
-    if systemctl is-active --quiet wazuh-manager 2>/dev/null; then
-        log_ok "Service wazuh-manager ACTIF"
+    # ── Etape 4.5 : Demarrage ────────────────────────────────────
+    log_info "[4.5] Demarrage du service Wazuh Manager..."
+    systemctl daemon-reload
+    systemctl enable wazuh-manager 2>/dev/null || true
+    systemctl start wazuh-manager 2>/dev/null || true
+    sleep 5
+
+    if systemctl is-active --quiet wazuh-manager; then
+        log_ok "Service wazuh-manager : ACTIF"
     else
-        log_warn "Service wazuh-manager non actif"
+        log_warn "Service wazuh-manager non actif — verifier :"
+        log_warn "  journalctl -u wazuh-manager -n 20"
+        # Tenter de le demarrer autrement
+        /var/ossec/bin/wazuh-control start 2>/dev/null || true
+        sleep 3
+        systemctl is-active --quiet wazuh-manager && log_ok "Wazuh demarre" || \
+            log_warn "Wazuh toujours inactif — installation continuee quand meme"
     fi
 
-    # Configuration supplementaire
+    # ── Configuration supplementaire ─────────────────────────────
     _configurer_wazuh
 }
 
@@ -634,14 +656,41 @@ _show_summary() {
     echo "  ╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 
-    echo -e "${CYAN}── SERVICES ─────────────────────────────────────────${NC}"
+    echo -e "${CYAN}── SERVICES INSTALLES ───────────────────────────────${NC}"
     for svc in snort wazuh-manager; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
-            echo -e "  ${GREEN}[ACTIF]${NC}   $svc"
+            echo -e "  ${GREEN}[ACTIF]${NC}    $svc"
         else
-            echo -e "  ${YELLOW}[INACTIF]${NC} $svc"
+            echo -e "  ${YELLOW}[INACTIF]${NC}  $svc — verifier : journalctl -u $svc -n 10"
         fi
     done
+
+    echo ""
+    echo -e "${CYAN}── VERSIONS INSTALLEES ──────────────────────────────${NC}"
+    SNV=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "?")
+    WZV=$(/var/ossec/bin/wazuh-control info 2>/dev/null | grep VERSION | cut -d= -f2 | tr -d '"' || echo "?")
+    echo -e "  Snort         : $SNV"
+    echo -e "  Wazuh Manager : $WZV"
+    echo -e "  Python3       : $(python3 --version 2>&1 | cut -d' ' -f2)"
+    echo -e "  OS            : $(. /etc/os-release && echo "$PRETTY_NAME")"
+
+    echo ""
+    echo -e "${CYAN}── FICHIERS CREES ───────────────────────────────────${NC}"
+    echo -e "  /opt/siem-africa/           (dossier principal)"
+    echo -e "  /opt/siem-africa/.env       (configuration)"
+    echo -e "  /opt/siem-africa/credentials.txt (identifiants)"
+    echo -e "  /etc/snort/snort.conf       (config Snort)"
+    echo -e "  /var/ossec/etc/ossec.conf   (config Wazuh)"
+    echo -e "  /var/ossec/logs/alerts/alerts.json (alertes JSON)"
+    echo -e "  /var/log/siem-africa/       (logs SIEM Africa)"
+
+    echo ""
+    echo -e "${CYAN}── GROUPE CENTRAL ───────────────────────────────────${NC}"
+    echo -e "  Groupe    : siem-africa"
+    echo -e "  Membres   : $(getent group siem-africa | cut -d: -f4)"
+    echo -e "  Dossier   : /opt/siem-africa/ (chmod 775)"
+    echo -e "  Base DB   : /opt/siem-africa/siem_africa.db (sera cree au module 2)"
+
 
     echo ""
     echo -e "${CYAN}── GROUPE SIEM-AFRICA ───────────────────────────────${NC}"
