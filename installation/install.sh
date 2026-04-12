@@ -2,7 +2,14 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh Manager
 #  Fichier  : installation/install.sh
+#  Version  : 3.0 — Réécriture complete
 #  Usage    : sudo bash install.sh
+#
+#  Ce script installe :
+#  - Snort IDS (detection d'intrusion reseau)
+#  - Wazuh Manager (SIEM + collecte alertes)
+#  - Liaison Snort → Wazuh via ossec.conf
+#  - Groupe central siem-africa (droits partages)
 # ================================================================
 
 # Pas de set -e — gestion d'erreurs explicite
@@ -407,122 +414,104 @@ CREDS
 install_snort() {
     log_etape "3/7 — $(msg 'INSTALLATION SNORT IDS' 'SNORT IDS INSTALLATION')"
 
-    # Dependances
-    log_info "[3.1] $(msg 'Mise a jour des paquets...' 'Updating packages...')"
-    apt-get update -qq 2>/dev/null
-    log_ok "$(msg 'Paquets mis a jour' 'Packages updated')"
+    apt-get update -qq
+    log_info "[3.1] $(msg 'Installation Snort...' 'Installing Snort...')"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq         snort         snort-rules-default         libpcap-dev         libpcre3-dev         libdumbnet-dev         build-essential         libcap2-bin > /dev/null 2>&1
 
-    log_info "[3.2] $(msg 'Installation de Snort...' 'Installing Snort...')"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        snort snort-rules-default \
-        libpcap-dev libpcre3-dev \
-        libdumbnet-dev libcap2-bin 2>&1 | \
-        grep -E "Unpacking|Setting up|Preparing to unpack" | \
-        while read line; do log_info "  $line"; done
-
-    if ! command -v snort > /dev/null 2>&1; then
-        quitter "$(msg 'Snort non installe — verifier la connexion internet' \
-                    'Snort not installed — check internet connection')"
+    if command -v snort > /dev/null 2>&1; then
+        SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
+        log_ok "$(msg "Snort installe : version $SNORT_VER" "Snort installed: version $SNORT_VER")"
+    else
+        quitter "$(msg 'Snort non installe' 'Snort not installed')"
     fi
 
-    SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
-    log_ok "$(msg "Snort installe : version $SNORT_VER" "Snort installed: version $SNORT_VER")"
+    _configurer_snort
+    _creer_service_snort
+}
 
-    # Configuration Snort
-    log_info "[3.3] $(msg 'Configuration de Snort...' 'Configuring Snort...')"
+_configurer_snort() {
+    log_info "[3.2] $(msg 'Configuration Snort...' 'Configuring Snort...')"
 
-    mkdir -p /var/log/snort /etc/snort/rules /etc/snort/so_rules
+    # Creer les dossiers necessaires
+    mkdir -p /var/log/snort /etc/snort/rules /etc/snort/so_rules /etc/snort/preproc_rules
+    touch /etc/snort/rules/local.rules 2>/dev/null || true
+    touch /etc/snort/rules/white_list.rules 2>/dev/null || true
+    touch /etc/snort/rules/black_list.rules 2>/dev/null || true
 
-    # Reseau surveille
-    LOCAL_NET=$(grep "^LOCAL_NET=" "$ENV_FILE" | cut -d'=' -f2)
+    # Determiner le reseau local
+    LOCAL_NET=$(ip -4 addr show "$INTERFACE" 2>/dev/null |         grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+/\d+' | head -1)
     [ -z "$LOCAL_NET" ] && LOCAL_NET="192.168.0.0/16"
 
-    # Modifier HOME_NET dans snort.conf
-    if [ -f /etc/snort/snort.conf ]; then
-        sed -i "s|^ipvar HOME_NET.*|ipvar HOME_NET ${LOCAL_NET}|" \
-            /etc/snort/snort.conf 2>/dev/null || true
+    SNORT_CONF="/etc/snort/snort.conf"
+
+    if [ -f "$SNORT_CONF" ]; then
+        # Le snort.conf existe (installe par apt) — on met juste HOME_NET a jour
+        sed -i "s|^ipvar HOME_NET.*|ipvar HOME_NET ${LOCAL_NET}|"             "$SNORT_CONF" 2>/dev/null || true
         log_ok "$(msg "HOME_NET configure : $LOCAL_NET" "HOME_NET set: $LOCAL_NET")"
-    fi
-
-    # Creer TOUS les dossiers et fichiers de regles requis par snort.conf
-    mkdir -p /etc/snort/rules /etc/snort/so_rules /etc/snort/preproc_rules
-
-    for f in white_list.rules black_list.rules local.rules; do
-        touch "/etc/snort/rules/$f"
-    done
-
-    # Corriger les chemins dans snort.conf pour pointer vers les bons dossiers
-    if [ -f /etc/snort/snort.conf ]; then
-        sed -i 's|^var RULE_PATH .*|var RULE_PATH /etc/snort/rules|'         /etc/snort/snort.conf
-        sed -i 's|^var SO_RULE_PATH .*|var SO_RULE_PATH /etc/snort/so_rules|' /etc/snort/snort.conf
-        sed -i 's|^var PREPROC_RULE_PATH .*|var PREPROC_RULE_PATH /etc/snort/preproc_rules|'             /etc/snort/snort.conf
-        sed -i 's|^var WHITE_LIST_PATH .*|var WHITE_LIST_PATH /etc/snort/rules|' /etc/snort/snort.conf
-        sed -i 's|^var BLACK_LIST_PATH .*|var BLACK_LIST_PATH /etc/snort/rules|' /etc/snort/snort.conf
-        log_ok "$(msg 'Chemins des regles Snort corriges' 'Snort rules paths fixed')"
-    fi
-
-    # Droits sur les logs
-    chown -R root:root /var/log/snort
-    chmod 755 /var/log/snort
-
-    # Donner les droits de capture reseau a Snort via setcap
-    log_info "[3.4] $(msg 'Configuration des droits reseau Snort...' 'Configuring Snort network rights...')"
-    SNORT_BIN=$(which snort)
-
-    if setcap cap_net_raw,cap_net_admin=eip "$SNORT_BIN" 2>/dev/null; then
-        log_ok "$(msg 'Droits capture reseau accordes a Snort via setcap' \
-                   'Network capture rights granted to Snort via setcap')"
-        SNORT_USER="root"  # On garde root pour les logs et fichiers pid
     else
-        log_warn "$(msg 'setcap non disponible — Snort tournera en root' \
-                    'setcap not available — Snort will run as root')"
-        SNORT_USER="root"
+        # Creer un snort.conf minimal si absent
+        cat > "$SNORT_CONF" << SNORTCONF
+# SIEM Africa — Configuration Snort minimale
+ipvar HOME_NET ${LOCAL_NET}
+ipvar EXTERNAL_NET !\$HOME_NET
+var RULE_PATH /etc/snort/rules
+var SO_RULE_PATH /etc/snort/so_rules
+var PREPROC_RULE_PATH /etc/snort/preproc_rules
+var WHITE_LIST_PATH /etc/snort/rules
+var BLACK_LIST_PATH /etc/snort/rules
+
+output alert_fast: /var/log/snort/alert
+output log_unified2: filename snort.log, limit 128
+
+preprocessor frag3_global: max_frags 65536
+preprocessor stream5_global: track_tcp yes, track_udp yes
+preprocessor stream5_tcp: policy first, detect_anomalies,     require_3whs 180, overlap_limit 10, small_segments 3 bytes 150, timeout 180
+
+config detection: search-method ac-split search-optimize max-pattern-len 20
+
+include \$RULE_PATH/local.rules
+SNORTCONF
+        log_ok "$(msg 'snort.conf cree' 'snort.conf created')"
     fi
 
-    # Creer l'utilisateur snort et l'ajouter au groupe
+    # Creer l'utilisateur snort
     if ! id "snort" > /dev/null 2>&1; then
         useradd --system --no-create-home --shell /sbin/nologin snort
     fi
     usermod -aG "$GROUPE" snort
-    log_ok "$(msg 'Utilisateur snort ajoute au groupe siem-africa' \
-               'User snort added to siem-africa group')"
 
-    # Donner acces aux logs Snort au groupe siem-africa
-    setfacl -R -m g:"${GROUPE}":rX /var/log/snort 2>/dev/null || \
-        chmod o+rX /var/log/snort 2>/dev/null || true
+    # Droits sur les logs
+    chown -R snort:snort /var/log/snort
+    chmod 775 /var/log/snort
+    setfacl -R -m g:"${GROUPE}":rX /var/log/snort 2>/dev/null ||         chmod o+rX /var/log/snort 2>/dev/null || true
 
-    # Test de la configuration Snort
-    log_info "[3.5] $(msg 'Test de la configuration Snort...' 'Testing Snort configuration...')"
-    if snort -T -c /etc/snort/snort.conf -i "$INTERFACE" > /tmp/snort_test.log 2>&1; then
-        log_ok "$(msg 'Configuration Snort valide' 'Snort configuration valid')"
-    else
-        # Voir l'erreur mais continuer
-        SNORT_ERR=$(tail -3 /tmp/snort_test.log 2>/dev/null || echo "")
-        log_warn "$(msg "Snort : avertissements de configuration (non bloquant)" \
-                    "Snort: configuration warnings (non-blocking)")"
-    fi
+    log_ok "$(msg 'Utilisateur snort ajoute au groupe siem-africa'                'User snort added to siem-africa group')"
+}
 
-    # Service systemd Snort
-    log_info "[3.6] $(msg 'Creation du service Snort...' 'Creating Snort service...')"
+_creer_service_snort() {
+    log_info "[3.3] $(msg 'Creation service Snort...' 'Creating Snort service...')"
+
+    # Donner les droits reseau a Snort
+    SNORT_BIN=$(which snort)
+    setcap cap_net_raw,cap_net_admin=eip "$SNORT_BIN" 2>/dev/null || true
+
     cat > /etc/systemd/system/snort.service << SNORTSVC
 [Unit]
 Description=SIEM Africa Snort IDS
 Documentation=https://github.com/luciesys/SIEM-AFRICA
 After=network.target
-Wants=network.target
 
 [Service]
 Type=simple
-User=root
-Group=root
-ExecStart=/usr/sbin/snort -q \
+User=snort
+Group=snort
+ExecStart=/usr/sbin/snort -q -u snort -g snort \
     -c /etc/snort/snort.conf \
     -i ${INTERFACE} \
     -l /var/log/snort \
-    -A fast \
-    -K ascii
+    -A fast
 Restart=on-failure
-RestartSec=15
+RestartSec=10
 StandardOutput=append:/var/log/siem-africa/snort.log
 StandardError=append:/var/log/siem-africa/snort.log
 AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
@@ -539,8 +528,7 @@ SNORTSVC
     if systemctl is-active --quiet snort; then
         log_ok "$(msg 'Service Snort : ACTIF' 'Snort service: ACTIVE')"
     else
-        log_warn "$(msg 'Snort non actif — voir : journalctl -u snort -n 10' \
-                    'Snort not active — see: journalctl -u snort -n 10')"
+        log_warn "$(msg 'Snort non actif — verifier : journalctl -u snort -n 10'                     'Snort not active — check: journalctl -u snort -n 10')"
     fi
 }
 
