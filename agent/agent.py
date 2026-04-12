@@ -2,6 +2,16 @@
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
 #  Fichier  : agent/agent.py
+#  Version  : 3.0
+#
+#  Fonctionnalites :
+#  - Lecture alerts.json Wazuh en temps reel
+#  - Correspondance avec base SQLite (380 signatures)
+#  - Score de confiance faux positifs (0-100)
+#  - Correlation des alertes
+#  - Notifications email bilingues FR/EN
+#  - Active Response (blocage IP auto gravite 4)
+#  - Honeypot SSH/HTTP/MySQL
 # ================================================================
 
 import os
@@ -27,7 +37,7 @@ DB_PATH     = "/opt/siem-africa/siem_africa.db"
 ALERTS_JSON = "/var/ossec/logs/alerts/alerts.json"
 LOG_FILE    = "/var/log/siem-africa/agent.log"
 AGENT_DIR   = "/opt/siem-africa/agent"
-PID_FILE    = "/var/run/siem-agent.pid"
+PID_FILE    = "/var/log/siem-africa/siem-agent.pid"
 
 def load_env():
     """Charger la configuration depuis .env"""
@@ -71,15 +81,16 @@ def load_env():
 # LOGGING
 # ================================================================
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ]
-)
 log = logging.getLogger("siem-agent")
+log.setLevel(logging.INFO)
+if not log.handlers:
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setFormatter(fmt)
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fmt)
+    log.addHandler(fh)
+    log.addHandler(sh)
 
 # ================================================================
 # BASE DE DONNEES
