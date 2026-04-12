@@ -595,55 +595,50 @@ lier_snort_wazuh() {
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
     [ ! -f "$OSSEC_CONF" ] && log_warn "ossec.conf absent" && return
 
-    # Ecrire le script Python dans un fichier temporaire (evite les problemes heredoc)
+    # Supprimer les entrees snort invalides avec Python3
     cat > /tmp/fix_ossec.py << 'PYEOF2'
-import sys, re
+import sys, re, xml.etree.ElementTree as ET
 
 path = sys.argv[1]
 content = open(path).read()
 
 # Supprimer toutes les entrees localfile snort
 content = re.sub(
-    r'[ 	]*<!--[^
-]*[Ss][Nn][Oo][Rr][Tt][^
-]*-->
-',
-    '',
-    content
-)
-content = re.sub(
     r'[ 	]*<localfile>[ 	
 ]*<log_format>snort[^<]*</log_format>[ 	
 ]*<location>[^<]*</location>[ 	
 ]*</localfile>[ 	]*
-',
+?',
     '',
     content
 )
+content = re.sub(r'[ 	]*<!--[^
+]*[Ss]nort[^
+]*-->
+?', '', content)
 
-# Verifier validite XML
+# Tester validite XML
 try:
-    import xml.etree.ElementTree as ET
     ET.fromstring(content)
     open(path, "w").write(content)
-    print("OK")
-except ET.ParseError as e:
-    print("XML_ERROR:" + str(e))
+    sys.exit(0)
+except ET.ParseError:
     sys.exit(1)
 PYEOF2
 
-    # Executer le nettoyage
-    RESULT=$(python3 /tmp/fix_ossec.py "$OSSEC_CONF" 2>&1)
-    if echo "$RESULT" | grep -q "^OK"; then
-        log_ok "$(msg 'ossec.conf nettoye (entrees snort supprimees)'                    'ossec.conf cleaned (snort entries removed)')"
+    python3 /tmp/fix_ossec.py "$OSSEC_CONF" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        log_ok "$(msg 'ossec.conf nettoye' 'ossec.conf cleaned')"
     else
-        # ossec.conf corrompu — le reinstaller via dpkg
-        log_warn "$(msg 'ossec.conf invalide — reinstallation du paquet Wazuh'                     'Invalid ossec.conf — reinstalling Wazuh package')"
-        DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y             wazuh-manager > /dev/null 2>&1 || true
-        log_ok "$(msg 'Wazuh Manager reinstalle — ossec.conf original restaure'                    'Wazuh Manager reinstalled — original ossec.conf restored')"
+        # ossec.conf trop corrompu — forcer reinstallation avec nouvel ossec.conf
+        log_warn "$(msg 'ossec.conf corrompu — reinstallation forcee'                     'Corrupted ossec.conf — forced reinstall')"
+        # Supprimer l'ancien ossec.conf pour que dpkg en installe un propre
+        rm -f "$OSSEC_CONF"
+        DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y             -o Dpkg::Options::="--force-confmiss"             -o Dpkg::Options::="--force-confnew"             wazuh-manager > /dev/null 2>&1 || true
+        log_ok "$(msg 'ossec.conf original restaure' 'Original ossec.conf restored')"
     fi
 
-    # Activer JSON output
+    # Activer JSON output — sed simple
     sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
     log_ok "$(msg 'Sortie JSON Wazuh activee' 'Wazuh JSON output enabled')"
 
