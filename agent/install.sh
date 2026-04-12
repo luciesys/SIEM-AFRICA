@@ -2,7 +2,15 @@
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
 #  Fichier  : agent/install.sh
+#  Version  : 3.0
 #  Usage    : sudo bash install.sh
+#
+#  Corrections v3.0 (problemes sessions precedentes) :
+#  - agent.py telecharge automatiquement depuis GitHub si absent
+#  - /opt/siem-africa/agent/ cree avec droits corrects DES LE DEBUT
+#  - siem-agent:siem-africa avec droits precis
+#  - WorkingDirectory verifie avant de creer le service
+#  - Pas de set -e
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -45,6 +53,44 @@ show_banner() {
     echo "  ║       Agent intelligent                             ║"
     echo "  ╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+}
+
+# ================================================================
+# DESINSTALLATION SI INSTALLATION ANTERIEURE
+# ================================================================
+desinstaller_si_present() {
+    local deja=0
+    [ -d /opt/siem-africa/agent ] && deja=1
+    [ -f /etc/systemd/system/siem-agent.service ] && deja=1
+
+    [ "$deja" -eq 0 ] && return 0
+
+    echo ""
+    echo -e "${YELLOW}╔══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  Installation anterieure detectee — suppression...  ║${NC}"
+    echo -e "${YELLOW}╚══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Arreter et desactiver le service
+    systemctl stop siem-agent 2>/dev/null || true
+    systemctl disable siem-agent 2>/dev/null || true
+    rm -f /etc/systemd/system/siem-agent.service
+    systemctl daemon-reload 2>/dev/null || true
+    log_ok "Service siem-agent arrete et supprime"
+
+    # Supprimer les fichiers de l'agent
+    rm -rf /opt/siem-africa/agent
+    log_ok "Dossier /opt/siem-africa/agent supprime"
+
+    # Supprimer l'utilisateur
+    id siem-agent &>/dev/null && userdel siem-agent 2>/dev/null &&         log_ok "Utilisateur siem-agent supprime" || true
+
+    # Nettoyer les logs
+    rm -f /var/log/siem-africa/agent.log
+    rm -f /var/log/siem-africa/siem-agent.pid
+    log_ok "Ancienne installation supprimee proprement"
+    echo ""
+    sleep 1
 }
 
 # ================================================================
@@ -200,8 +246,8 @@ WorkingDirectory=${AGENT_DIR}
 ExecStart=/usr/bin/python3 ${AGENT_DIR}/agent.py
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/siem-africa/agent.log
-StandardError=append:/var/log/siem-africa/agent.log
+StandardOutput=null
+StandardError=null
 
 [Install]
 WantedBy=multi-user.target
@@ -309,6 +355,7 @@ main() {
     echo "=== SIEM Africa Module 3 v3.0 - $(date) ===" >> "$LOG_FILE"
 
     show_banner
+    desinstaller_si_present
     check_all
     trouver_agent_py
     install_deps
