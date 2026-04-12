@@ -2,7 +2,15 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
 #  Fichier  : installation/install.sh
+#  Version  : 2.2 — Refonte complete
 #  Usage    : sudo bash install.sh
+#
+#  Corrections v2.2 :
+#  - Groupe siem-africa cree en premier (resout tous les pb droits)
+#  - Wazuh Manager uniquement (pas d'indexer ni dashboard Wazuh)
+#  - Sans set -e — gestion d'erreurs explicite
+#  - Permissions /opt/siem-africa/ correctes des le depart
+#  - Detection interface reseau automatique
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -163,13 +171,39 @@ check_systeme() {
     log_ok "Connexion internet OK"
 
     # Detection interface reseau
-    INTERFACE=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'dev \K\S+' | head -1)
-    [ -z "$INTERFACE" ] && INTERFACE=$(ip link show | grep -v lo | grep "state UP" | \
-        awk -F': ' '{print $2}' | head -1)
-    [ -z "$INTERFACE" ] && INTERFACE="eth0"
-    log_ok "Interface reseau : $INTERFACE"
+    # Detection et selection interface reseau
+    INTERFACES=$(ip link show 2>/dev/null | grep -v "lo:" | grep "state UP" | awk -F': ' '{print $2}' | tr -d ' ')
+    NB=$(echo "$INTERFACES" | grep -c "." 2>/dev/null || echo "0")
 
-    # IP du serveur
+    if [ "$NB" -le 1 ]; then
+        INTERFACE=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'dev \K\S+' | head -1)
+        [ -z "$INTERFACE" ] && INTERFACE=$(echo "$INTERFACES" | head -1)
+        [ -z "$INTERFACE" ] && INTERFACE="eth0"
+        log_ok "Interface reseau : $INTERFACE (detectee automatiquement)"
+    else
+        echo ""
+        log_info "Plusieurs interfaces reseau detectees :"
+        echo "$INTERFACES" | cat -n | while read line; do echo "    $line"; done
+        echo -n "  Interface a surveiller (Entree pour auto) : "
+        read IFACE_INPUT
+        IFACE_INPUT=$(echo "$IFACE_INPUT" | xargs)
+        if [ -n "$IFACE_INPUT" ] && ip link show "$IFACE_INPUT" > /dev/null 2>&1; then
+            INTERFACE="$IFACE_INPUT"
+            log_ok "Interface choisie : $INTERFACE"
+        else
+            INTERFACE=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'dev \K\S+' | head -1 || echo "eth0")
+            log_ok "Interface auto : $INTERFACE"
+        fi
+    fi
+
+    # Verification connexion internet
+    log_info "Verification connexion internet..."
+    if ping -c 2 -W 3 8.8.8.8 > /dev/null 2>&1 || ping -c 2 -W 3 1.1.1.1 > /dev/null 2>&1; then
+        log_ok "Connexion internet OK"
+    else
+        quitter "Pas de connexion internet — requise pour l'installation"
+    fi
+
     SERVER_IP=$(hostname -I | awk '{print $1}')
     log_ok "IP serveur : $SERVER_IP"
 }
@@ -556,120 +590,47 @@ https://packages.wazuh.com/4.x/apt/ stable main" | \
 
 _configurer_wazuh() {
     log_info "Configuration Wazuh Manager..."
-
-    # Ajouter les sources de logs pour SIEM Africa
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
 
-    # Activer la sortie JSON des alertes (requis pour notre agent)
+    # Activer jsonout (utiliser sed propre, pas de concatenation XML)
     if [ -f "$OSSEC_CONF" ]; then
-        # Verifier si le JSON output est deja configure
-        if ! grep -q "alerts.json" "$OSSEC_CONF"; then
-            # Ajouter avant la balise </ossec_config>
-            sed -i 's|</ossec_config>|  <logging>\n    <log_alert_level>1</log_alert_level>\n  </logging>\n\n  <global>\n    <jsonout_output>yes</jsonout_output>\n    <alerts_log>yes</alerts_log>\n    <logall>no</logall>\n    <logall_json>no</logall_json>\n    <email_notification>no</email_notification>\n  </global>\n\n</ossec_config>|' \
-                "$OSSEC_CONF" 2>/dev/null || true
-        fi
+        sed -i "s|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|" \
+            "$OSSEC_CONF" 2>/dev/null || true
 
-        # Ajouter les localfiles Snort si pas deja presents
-        if ! grep -q "snort" "$OSSEC_CONF" 2>/dev/null; then
-            sed -i 's|</ossec_config>|  <!-- Logs Snort -->\n  <localfile>\n    <log_format>snort-fast</log_format>\n    <location>/var/log/snort/alert</location>\n  </localfile>\n\n  <!-- Logs systeme -->\n  <localfile>\n    <log_format>syslog</log_format>\n    <location>/var/log/auth.log</location>\n  </localfile>\n\n  <localfile>\n    <log_format>syslog</log_format>\n    <location>/var/log/syslog</location>\n  </localfile>\n\n</ossec_config>|' \
+        # Ajouter source logs Snort seulement si absente
+        if ! grep -q "snort-fast" "$OSSEC_CONF"; then
+            sed -i "/<\/ossec_config>/i\  <localfile>\n    <log_format>snort-fast<\/log_format>\n    <location>\/var\/log\/snort\/alert<\/location>\n  <\/localfile>" \
                 "$OSSEC_CONF" 2>/dev/null || true
         fi
-        log_ok "Configuration Wazuh mise a jour (JSON + Snort + logs systeme)"
+        log_ok "Configuration Wazuh mise a jour (JSON + Snort)"
     fi
 
-    # Creer le dossier alerts si inexistant
+    # Permissions alerts.json
     mkdir -p /var/ossec/logs/alerts
-    chown -R wazuh:wazuh /var/ossec/logs 2>/dev/null || true
-
-    # Acces au fichier alerts.json pour le groupe siem-africa
-    chmod 755 /var/ossec/logs/alerts 2>/dev/null || true
-    # Le fichier sera cree par Wazuh quand il detectera des alertes
     touch /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
-    chown wazuh:wazuh /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+    chown -R wazuh:wazuh /var/ossec/logs/ 2>/dev/null || true
+    chmod 755 /var/ossec/logs/alerts
     chmod 664 /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
     setfacl -m g:"${GROUPE}":r /var/ossec/logs/alerts/alerts.json 2>/dev/null || \
         chmod o+r /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+    usermod -aG "$GROUPE" wazuh 2>/dev/null || true
     log_ok "Acces alerts.json configure pour groupe $GROUPE"
+
+    # Redemarrer Wazuh
+    systemctl restart wazuh-manager 2>/dev/null || true
+    sleep 3
+    systemctl is-active --quiet wazuh-manager && \
+        log_ok "Wazuh Manager operationnel" || \
+        log_warn "Wazuh non actif — verifier : journalctl -u wazuh-manager -n 10"
 }
 
 # ================================================================
-# ETAPE 5 : Detection mot de passe Wazuh API
+# Module 3 s'occupera de detecter le MDP Wazuh automatiquement
+# depuis /root/wazuh-install-files.tar
 # ================================================================
 detect_wazuh_mdp() {
-    log_etape "5/7" "DETECTION MOT DE PASSE WAZUH API"
-
-    WAZUH_PASS=""
-
-    # Methode 1 : wazuh-install-files.tar
-    for TAR_PATH in /root/wazuh-install-files.tar /tmp/wazuh-install-files.tar; do
-        [ ! -f "$TAR_PATH" ] && continue
-        log_info "Lecture de $TAR_PATH..."
-
-        # Extraire wazuh-passwords.txt
-        tar -xf "$TAR_PATH" -C /tmp \
-            wazuh-install-files/wazuh-passwords.txt 2>/dev/null || true
-
-        if [ -f /tmp/wazuh-install-files/wazuh-passwords.txt ]; then
-            # Parser le mot de passe API wazuh
-            WAZUH_PASS=$(grep -A3 "api_username.*'wazuh'" \
-                /tmp/wazuh-install-files/wazuh-passwords.txt 2>/dev/null | \
-                grep "api_password" | \
-                grep -oP "(?<=')[^']+(?=')" | head -1)
-
-            # Fallback : chercher directement
-            [ -z "$WAZUH_PASS" ] && \
-                WAZUH_PASS=$(grep -A1 "Password for wazuh API" \
-                    /tmp/wazuh-install-files/wazuh-passwords.txt 2>/dev/null | \
-                    grep "api_password" | \
-                    grep -oP "(?<=')[^']+(?=')" | head -1)
-
-            [ -n "$WAZUH_PASS" ] && {
-                log_ok "Mot de passe Wazuh API detecte automatiquement"
-                break
-            }
-        fi
-    done
-
-    # Methode 2 : Generer via l'API Wazuh si Manager tourne
-    if [ -z "$WAZUH_PASS" ] && systemctl is-active --quiet wazuh-manager; then
-        log_info "Tentative de recuperation depuis l'API Wazuh..."
-        # Attendre que l'API soit prete
-        sleep 5
-        # Essayer avec le mot de passe par defaut
-        for DEFAULT_PASS in "wazuh" "Wazuh1234!"; do
-            RESP=$(curl -sk -u "wazuh:${DEFAULT_PASS}" \
-                https://127.0.0.1:55000/security/user/authenticate \
-                2>/dev/null)
-            if echo "$RESP" | grep -q "token"; then
-                WAZUH_PASS="$DEFAULT_PASS"
-                log_ok "Mot de passe Wazuh par defaut fonctionne : $DEFAULT_PASS"
-                break
-            fi
-        done
-    fi
-
-    # Methode 3 : Saisie manuelle
-    if [ -z "$WAZUH_PASS" ]; then
-        echo ""
-        log_warn "Mot de passe Wazuh API non detecte automatiquement."
-        log_warn "Il sera disponible apres l'installation complete de Wazuh."
-        echo -n "  Entrez le mot de passe maintenant (ou Entree pour ignorer) : "
-        read -s WAZUH_PASS_INPUT
-        echo ""
-        [ -n "$WAZUH_PASS_INPUT" ] && {
-            WAZUH_PASS="$WAZUH_PASS_INPUT"
-            log_ok "Mot de passe saisi manuellement"
-        }
-    fi
-
-    # Sauvegarder dans .env
-    if [ -n "$WAZUH_PASS" ]; then
-        sed -i "s|^WAZUH_PASSWORD=.*|WAZUH_PASSWORD=${WAZUH_PASS}|" "$ENV_FILE"
-        log_ok "Mot de passe Wazuh sauvegarde dans .env"
-    else
-        log_warn "Mot de passe non configure — a faire manuellement :"
-        log_warn "  sudo nano $ENV_FILE → WAZUH_PASSWORD=votre_mdp"
-    fi
+    log_info "MDP Wazuh : sera detecte automatiquement au Module 3 (Agent)"
+    log_info "Le fichier source : /root/wazuh-install-files.tar"
 }
 
 # ================================================================
@@ -850,7 +811,6 @@ main() {
     setup_base
     install_snort
     install_wazuh
-    detect_wazuh_mdp
     lier_wazuh_snort
     finaliser
 
