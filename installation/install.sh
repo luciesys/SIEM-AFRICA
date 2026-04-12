@@ -2,15 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh
 #  Fichier  : installation/install.sh
-#  Version  : 2.2 — Refonte complete
 #  Usage    : sudo bash install.sh
-#
-#  Corrections v2.2 :
-#  - Groupe siem-africa cree en premier (resout tous les pb droits)
-#  - Wazuh Manager uniquement (pas d'indexer ni dashboard Wazuh)
-#  - Sans set -e — gestion d'erreurs explicite
-#  - Permissions /opt/siem-africa/ correctes des le depart
-#  - Detection interface reseau automatique
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
