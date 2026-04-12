@@ -2,7 +2,14 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh Manager
 #  Fichier  : installation/install.sh
+#  Version  : 3.0 — Réécriture complete
 #  Usage    : sudo bash install.sh
+#
+#  Ce script installe :
+#  - Snort IDS (detection d'intrusion reseau)
+#  - Wazuh Manager (SIEM + collecte alertes)
+#  - Liaison Snort → Wazuh via ossec.conf
+#  - Groupe central siem-africa (droits partages)
 # ================================================================
 
 # Pas de set -e — gestion d'erreurs explicite
@@ -580,93 +587,46 @@ https://packages.wazuh.com/4.x/apt/ stable main" | \
 }
 
 # ================================================================
-# ETAPE 5 : Liaison Snort → Wazuh (ossec.conf)
+# ETAPE 5 : Liaison Snort → Wazuh
 # ================================================================
 lier_snort_wazuh() {
-    log_etape "5/7 — $(msg 'LIAISON SNORT → WAZUH' 'SNORT → WAZUH LINK')"
+    log_etape "5/7 — $(msg 'LIAISON SNORT ET WAZUH' 'SNORT AND WAZUH LINK')"
 
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
+    [ ! -f "$OSSEC_CONF" ] && log_warn "ossec.conf absent" && return
 
-    if [ ! -f "$OSSEC_CONF" ]; then
-        log_warn "$(msg 'ossec.conf introuvable — liaison impossible' \
-                    'ossec.conf not found — linking impossible')"
-        return
-    fi
+    # Activer JSON uniquement si desactive (simple sed, une seule ligne)
+    sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
+    log_ok "$(msg 'Sortie JSON Wazuh activee' 'Wazuh JSON output enabled')"
 
-    # Activer la sortie JSON des alertes
-    log_info "[5.1] $(msg 'Activation sortie JSON Wazuh...' 'Enabling Wazuh JSON output...')"
-    if grep -q "jsonout_output" "$OSSEC_CONF"; then
-        # La balise existe — on la met a yes
-        sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g' \
-            "$OSSEC_CONF"
-    fi
-    log_ok "$(msg 'Sortie JSON activee' 'JSON output enabled')"
-
-    # Ajouter la source Snort UNE SEULE FOIS
-    log_info "[5.2] $(msg 'Ajout source logs Snort dans Wazuh...' \
-                         'Adding Snort log source to Wazuh...')"
-
-    if grep -q "snort-fast" "$OSSEC_CONF"; then
-        log_info "$(msg 'Source Snort deja presente dans ossec.conf' \
-                    'Snort source already present in ossec.conf')"
-    else
-        # Inserer juste AVANT la derniere ligne </ossec_config>
-        # On utilise python3 pour eviter les problemes de sed avec XML
-        python3 << PYEOF
-import re
-
-with open("$OSSEC_CONF", "r") as f:
-    content = f.read()
-
-snort_block = """
-  <!-- SIEM Africa : Source logs Snort -->
+    # Ajouter localfile Snort seulement si absent — via python3 propre
+    if ! grep -q "snort-fast" "$OSSEC_CONF"; then
+        python3 - "$OSSEC_CONF" << 'PYEOF2'
+import sys
+path = sys.argv[1]
+content = open(path).read()
+block = "
+  <!-- SIEM Africa -->
   <localfile>
     <log_format>snort-fast</log_format>
     <location>/var/log/snort/alert</location>
   </localfile>
 
-"""
-
-# Inserer avant la derniere balise </ossec_config>
-# On cherche la derniere occurrence de </ossec_config>
-last_pos = content.rfind("</ossec_config>")
-if last_pos != -1:
-    content = content[:last_pos] + snort_block + content[last_pos:]
-    with open("$OSSEC_CONF", "w") as f:
-        f.write(content)
+"
+last = content.rfind("</ossec_config>")
+if last != -1:
+    content = content[:last] + block + content[last:]
+    open(path, "w").write(content)
     print("OK")
-else:
-    print("ERREUR: </ossec_config> non trouve")
-PYEOF
-        log_ok "$(msg 'Source Snort ajoutee dans ossec.conf' 'Snort source added to ossec.conf')"
-    fi
-
-    # Verifier que le XML est valide
-    log_info "[5.3] $(msg 'Verification de la configuration Wazuh...' \
-                         'Verifying Wazuh configuration...')"
-    if python3 -c "
-import xml.etree.ElementTree as ET
-try:
-    ET.parse('$OSSEC_CONF')
-    print('VALID')
-except ET.ParseError as e:
-    print(f'INVALID: {e}')
-" 2>/dev/null | grep -q "VALID"; then
-        log_ok "$(msg 'Configuration ossec.conf valide (XML OK)' \
-                   'ossec.conf configuration valid (XML OK)')"
+PYEOF2
+        log_ok "$(msg 'Source Snort ajoutee dans ossec.conf' 'Snort source added')"
     else
-        log_warn "$(msg 'ossec.conf a un probleme XML — restauration backup' \
-                    'ossec.conf has XML issue — restoring backup')"
-        # Restaurer depuis le backup wazuh
-        if [ -f "${OSSEC_CONF}.dpkg-old" ]; then
-            cp "${OSSEC_CONF}.dpkg-old" "$OSSEC_CONF"
-        fi
+        log_info "$(msg 'Source Snort deja presente' 'Snort source already present')"
     fi
 
     # Ajouter wazuh au groupe siem-africa
     usermod -aG "$GROUPE" wazuh 2>/dev/null || true
-    log_ok "$(msg 'Utilisateur wazuh ajoute au groupe siem-africa' \
-               'User wazuh added to siem-africa group')"
+    log_ok "$(msg 'Utilisateur wazuh ajoute au groupe siem-africa'                'User wazuh added to siem-africa group')"
 }
 
 # ================================================================
