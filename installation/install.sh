@@ -43,6 +43,80 @@ show_banner() {
     echo -e "${NC}"
 }
 
+# ── Desinstallation propre si installation anterieure detectee ────
+desinstaller_si_present() {
+    local deja=0
+    [ -d /var/ossec ]          && deja=1
+    [ -f /etc/snort/snort.conf ] && deja=1
+    [ -d /opt/siem-africa ]    && deja=1
+
+    [ "$deja" -eq 0 ] && return 0
+
+    echo ""
+    echo -e "${YELLOW}╔══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  Installation anterieure detectee !                 ║${NC}"
+    echo -e "${YELLOW}║  Suppression avant reinstallation propre...         ║${NC}"
+    echo -e "${YELLOW}╚══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Arreter les services
+    for svc in snort wazuh-manager wazuh-indexer wazuh-dashboard siem-agent siem-dashboard siem-reports; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            systemctl stop "$svc" 2>/dev/null || true
+            log_ok "Service $svc arrete"
+        fi
+        systemctl disable "$svc" 2>/dev/null || true
+        rm -f "/etc/systemd/system/${svc}.service"
+    done
+    systemctl daemon-reload 2>/dev/null || true
+    log_ok "Services arretes et desactives"
+
+    # Supprimer Wazuh
+    if [ -d /var/ossec ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge \
+            wazuh-manager wazuh-indexer wazuh-dashboard wazuh-agent \
+            > /dev/null 2>&1 || true
+        rm -rf /var/ossec /etc/wazuh* /usr/share/wazuh* 2>/dev/null || true
+        rm -f /etc/apt/sources.list.d/wazuh.list 2>/dev/null || true
+        rm -f /usr/share/keyrings/wazuh.gpg 2>/dev/null || true
+        log_ok "Wazuh supprime"
+    fi
+
+    # Supprimer Snort
+    if command -v snort > /dev/null 2>&1 || [ -f /etc/snort/snort.conf ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge \
+            snort snort-rules-default > /dev/null 2>&1 || true
+        rm -rf /etc/snort /var/log/snort 2>/dev/null || true
+        log_ok "Snort supprime"
+    fi
+
+    # Supprimer le dossier SIEM Africa
+    if [ -d /opt/siem-africa ]; then
+        rm -rf /opt/siem-africa
+        log_ok "Dossier /opt/siem-africa supprime"
+    fi
+
+    # Supprimer les utilisateurs systeme
+    for usr in snort wazuh siem-africa siem-agent siem-dashboard siem-reports; do
+        id "$usr" &>/dev/null && userdel "$usr" 2>/dev/null && log_ok "Utilisateur $usr supprime" || true
+    done
+
+    # Supprimer le groupe
+    getent group siem-africa &>/dev/null && groupdel siem-africa 2>/dev/null && log_ok "Groupe siem-africa supprime" || true
+
+    # Archiver les anciens logs
+    [ -d /var/log/siem-africa ] && \
+        mv /var/log/siem-africa "/var/log/siem-africa-backup-$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+
+    # Nettoyer apt
+    apt-get autoremove -y > /dev/null 2>&1 || true
+    apt-get autoclean > /dev/null 2>&1 || true
+
+    log_ok "Ancienne installation supprimee — reinstallation propre en cours..."
+    echo ""
+    sleep 2
+}
+
 # ================================================================
 # ETAPE 1 : Verifications systeme
 # ================================================================
@@ -254,25 +328,64 @@ install_snort() {
     usermod -aG "$GROUPE" snort
     log_ok "Utilisateur snort ajoute au groupe $GROUPE"
 
-    # Service systemd Snort
+    # Donner a snort les droits de capture reseau via setcap
+    # Cela permet a snort de capturer les paquets SANS besoin de root
+    apt-get install -y -qq libcap2-bin > /dev/null 2>&1 || true
+    SNORT_BIN=$(which snort 2>/dev/null || echo "/usr/sbin/snort")
+    if setcap cap_net_raw,cap_net_admin=eip "$SNORT_BIN" 2>/dev/null; then
+        log_ok "Droits capture reseau accordes a Snort via setcap"
+    else
+        log_warn "setcap echoue — Snort tournera en root (fonctionnel mais moins securise)"
+    fi
+
+    # Droits sur les dossiers de logs pour l'utilisateur snort
+    chown -R snort:snort /var/log/snort 2>/dev/null || true
+    chmod 755 /var/log/snort
+
+    # ── Service systemd Snort ────────────────────────────────────
+    # Test de la configuration avant de creer le service
+    log_info "Test de la configuration Snort..."
+    if snort -T -c /etc/snort/snort.conf -i "$INTERFACE" > /dev/null 2>&1; then
+        log_ok "Configuration Snort valide"
+    else
+        log_warn "Configuration Snort avec avertissements — on continue quand meme"
+    fi
+
+    # Creer le service systemd avec une config simple et robuste
+    # Determiner l'utilisateur Snort selon les droits accordes
+    SNORT_BIN=$(which snort 2>/dev/null || echo "/usr/sbin/snort")
+    if getcap "$SNORT_BIN" 2>/dev/null | grep -q "cap_net_raw"; then
+        SNORT_USER="snort"
+        SNORT_GROUP="snort"
+        log_ok "Snort utilisera l'utilisateur dedie (setcap OK)"
+    else
+        SNORT_USER="root"
+        SNORT_GROUP="root"
+        log_info "Snort utilisera root (setcap non disponible)"
+    fi
+
     cat > /etc/systemd/system/snort.service << SNORTSVC
 [Unit]
 Description=SIEM Africa — Snort IDS
+Documentation=https://github.com/luciesys/SIEM-AFRICA
 After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
-User=snort
-Group=snort
-ExecStart=/usr/sbin/snort -q -u snort -g snort \
+User=${SNORT_USER}
+Group=${SNORT_GROUP}
+ExecStart=/usr/sbin/snort -q \
     -c /etc/snort/snort.conf \
     -i ${INTERFACE} \
     -l /var/log/snort \
-    -A fast
+    -A fast \
+    -K ascii
 Restart=on-failure
-RestartSec=10
+RestartSec=15
 StandardOutput=append:/var/log/siem-africa/snort.log
 StandardError=append:/var/log/siem-africa/snort.log
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
@@ -280,13 +393,18 @@ SNORTSVC
 
     systemctl daemon-reload
     systemctl enable snort 2>/dev/null || true
-    systemctl restart snort 2>/dev/null || true
-    sleep 2
+    systemctl start snort 2>/dev/null || true
+    sleep 3
 
     if systemctl is-active --quiet snort; then
         log_ok "Service Snort ACTIF"
     else
-        log_warn "Service Snort non actif — verifier : journalctl -u snort -n 10"
+        log_warn "Snort non actif — diagnostic rapide :"
+        # Tenter en mode test pour voir l'erreur
+        SNORT_ERR=$(snort -T -c /etc/snort/snort.conf -i "$INTERFACE" 2>&1 | tail -5)
+        log_warn "$SNORT_ERR"
+        log_warn "Snort sera relance apres configuration complete"
+        log_warn "Commande manuelle : systemctl start snort"
     fi
 }
 
@@ -716,6 +834,7 @@ main() {
     echo "=== SIEM Africa Module 1 v2.2 - $(date) ===" >> "$LOG_FILE"
 
     show_banner
+    desinstaller_si_present
 
     echo -e "  Ce script va installer :"
     echo -e "  ${CYAN}→ Groupe siem-africa${NC} (permissions centralisees)"
