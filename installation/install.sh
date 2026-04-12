@@ -2,14 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 1 : Installation Snort + Wazuh Manager
 #  Fichier  : installation/install.sh
-#  Version  : 3.0 — Réécriture complete
 #  Usage    : sudo bash install.sh
-#
-#  Ce script installe :
-#  - Snort IDS (detection d'intrusion reseau)
-#  - Wazuh Manager (SIEM + collecte alertes)
-#  - Liaison Snort → Wazuh via ossec.conf
-#  - Groupe central siem-africa (droits partages)
 # ================================================================
 
 # Pas de set -e — gestion d'erreurs explicite
