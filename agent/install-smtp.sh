@@ -18,9 +18,28 @@ log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[ATTENTION]${NC} $1"; }
 log_err()  { echo -e "${RED}[ERREUR]${NC} $1"; }
 
+# ================================================================
+# DESINSTALLATION CONFIGURATION PRECEDENTE
+# ================================================================
+desinstaller_si_present() {
+    # Verifier si SMTP deja configure
+    if grep -q "^SMTP_USER=.\+" "$ENV_FILE" 2>/dev/null; then
+        ANCIEN_SMTP=$(grep "^SMTP_USER=" "$ENV_FILE" | cut -d= -f2)
+        echo ""
+        echo -e "${YELLOW}Configuration SMTP precedente detectee : $ANCIEN_SMTP${NC}"
+        echo -e "${YELLOW}Elle sera remplacee par la nouvelle configuration.${NC}"
+        echo ""
+        # Reinitialiser les valeurs SMTP
+        sed -i "s|^SMTP_USER=.*|SMTP_USER=|"         "$ENV_FILE"
+        sed -i "s|^SMTP_PASSWORD=.*|SMTP_PASSWORD=|" "$ENV_FILE"
+        sed -i "s|^ALERT_EMAIL=.*|ALERT_EMAIL=|"     "$ENV_FILE"
+    fi
+}
+
 # ── Verification ──────────────────────────────────────────────────
 [ "$EUID" -ne 0 ] && echo "Lancez avec : sudo bash configure_smtp.sh" && exit 1
 [ ! -f "$ENV_FILE" ] && echo "Module 1 non installe" && exit 1
+desinstaller_si_present
 
 clear
 echo -e "${CYAN}${BOLD}"
@@ -177,83 +196,37 @@ else
 fi
 
 # ── Envoyer un email de test ─────────────────────────────────────
-echo ""
-log_info "Envoi d'un email de test vers $ALERT_EMAIL ..."
 
-python3 << PYEOF
+# Tester l'envoi email
+RESULT=$(python3 - << PYEOF2
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
 
-smtp_user = "${SMTP_USER}"
-smtp_pass = "${SMTP_PASSWORD}"
-alert_email = "${ALERT_EMAIL}"
-
-sujet = "[SIEM Africa] ✅ Test de configuration email"
-corps = """
-Bonjour,
-
-Ceci est un email de test de SIEM Africa.
-
-Si vous recevez cet email, la configuration SMTP est correcte.
-Les alertes de securite seront envoyees a cette adresse.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Serveur   : $(hostname)
-  Date      : $(date '+%d/%m/%Y a %H:%M')
-  Agent     : SIEM Africa v3.0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Types d'alertes que vous recevrez :
-  🔴 Critique  — Ransomware, intrusion confirmee
-  🟠 Haute     — Brute force reussi, malware
-  🟡 Moyenne   — Scan intensif, tentatives multiples
-  🟢 Faible    — Scan simple, tentative isolee
-
-— SIEM Africa | github.com/luciesys/SIEM-AFRICA
-"""
+smtp_user = open('/opt/siem-africa/.env').read()
+smtp_user = [l.split('=',1)[1].strip() for l in smtp_user.splitlines() if l.startswith('SMTP_USER=')][0]
+smtp_pass = open('/opt/siem-africa/.env').read()
+smtp_pass = [l.split('=',1)[1].strip() for l in smtp_pass.splitlines() if l.startswith('SMTP_PASSWORD=')][0]
+dest      = open('/opt/siem-africa/.env').read()
+dest      = [l.split('=',1)[1].strip() for l in dest.splitlines() if l.startswith('ALERT_EMAIL=')][0]
 
 try:
     msg = MIMEMultipart()
-    msg["From"]    = smtp_user
-    msg["To"]      = alert_email
-    msg["Subject"] = sujet
-    msg.attach(MIMEText(corps, "plain", "utf-8"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(smtp_user, [alert_email], msg.as_string())
-
-    print("EMAIL_OK")
-
-except smtplib.SMTPAuthenticationError:
-    print("ERREUR_AUTH")
-except smtplib.SMTPException as e:
-    print(f"ERREUR_SMTP:{e}")
-except Exception as e:
-    print(f"ERREUR:{e}")
-PYEOF
-
-# Lire le résultat du test
-RESULT=$(python3 -c "
-import smtplib
-from email.mime.text import MIMEText, MIMEMultipart
-smtp_user='${SMTP_USER}'; smtp_pass='${SMTP_PASSWORD}'; dest='${ALERT_EMAIL}'
-try:
-    msg=MIMEText('Test SIEM Africa','plain','utf-8')
-    msg['From']=smtp_user; msg['To']=dest; msg['Subject']='[SIEM Africa] Test email'
-    with smtplib.SMTP('smtp.gmail.com',587,timeout=20) as s:
-        s.ehlo(); s.starttls(); s.login(smtp_user,smtp_pass)
-        s.sendmail(smtp_user,[dest],msg.as_string())
+    msg['From']    = smtp_user
+    msg['To']      = dest
+    msg['Subject'] = '[SIEM Africa] Test de configuration email'
+    msg.attach(MIMEText('Configuration SIEM Africa reussie. Vous recevrez les alertes ici.', 'plain', 'utf-8'))
+    with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as s:
+        s.ehlo(); s.starttls()
+        s.login(smtp_user, smtp_pass)
+        s.sendmail(smtp_user, [dest], msg.as_string())
     print('OK')
 except smtplib.SMTPAuthenticationError:
     print('AUTH_ERROR')
 except Exception as e:
-    print(f'ERROR:{e}')
-" 2>/dev/null)
+    print('ERROR:' + str(e))
+PYEOF2
+)
 
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
