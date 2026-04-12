@@ -1,5 +1,5 @@
 -- ================================================================
---  SIEM Africa — 380 Signatures d'attaques v2.2
+--  SIEM Africa — 380 Signatures d'attaques 
 --  Adaptees depuis la base v1 avec nouvelles colonnes
 -- ================================================================
 
