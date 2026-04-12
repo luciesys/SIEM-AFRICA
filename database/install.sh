@@ -2,17 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 2 : Base de donnees SQLite
 #  Fichier  : database/install.sh
-#  Version  : 2.2 — Refonte complete
 #  Usage    : sudo bash install.sh
-#
-#  Corrections v2.2 :
-#  - Groupe siem-africa verifie (cree par Module 1)
-#  - Permissions SQLite correctes : siem-africa:siem-africa + chmod 664
-#  - Sans set -e
-#  - Username comme login (plus email)
-#  - Table emails_alertes : plusieurs emails de notification
-#  - Compte admin genere automatiquement
-#  - Politiques securite username et mot de passe
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -364,7 +354,7 @@ _show_summary() {
 # ================================================================
 main() {
     mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-    echo "=== SIEM Africa Module 2 v2.2 - $(date) ===" >> "$LOG_FILE"
+    echo "=== SIEM Africa - $(date) ===" >> "$LOG_FILE"
 
     show_banner
     desinstaller_si_present
