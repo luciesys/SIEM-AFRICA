@@ -595,63 +595,63 @@ lier_snort_wazuh() {
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
     [ ! -f "$OSSEC_CONF" ] && log_warn "ossec.conf absent" && return
 
-    # Nettoyer toutes les entrees snort cassees dans ossec.conf
-    # via Python3 — suppression propre sans casser le XML
-    python3 - "$OSSEC_CONF" << 'PYEOF2'
+    # Ecrire le script Python dans un fichier temporaire (evite les problemes heredoc)
+    cat > /tmp/fix_ossec.py << 'PYEOF2'
 import sys, re
 
 path = sys.argv[1]
 content = open(path).read()
 
-# Supprimer toutes les entrees localfile snort (quelle que soit la valeur)
+# Supprimer toutes les entrees localfile snort
 content = re.sub(
-    r'\s*<!--[^-]*[Ss]nort[^-]*-->\s*',
-    '
-  ',
+    r'[ 	]*<!--[^
+]*[Ss][Nn][Oo][Rr][Tt][^
+]*-->
+',
+    '',
     content
 )
 content = re.sub(
-    r'\s*<localfile>\s*<log_format>snort[^<]*</log_format>\s*<location>[^<]*</location>\s*</localfile>',
+    r'[ 	]*<localfile>[ 	
+]*<log_format>snort[^<]*</log_format>[ 	
+]*<location>[^<]*</location>[ 	
+]*</localfile>[ 	]*
+',
     '',
-    content,
-    flags=re.DOTALL
+    content
 )
 
-open(path, "w").write(content)
-print("Entrees snort supprimees")
+# Verifier validite XML
+try:
+    import xml.etree.ElementTree as ET
+    ET.fromstring(content)
+    open(path, "w").write(content)
+    print("OK")
+except ET.ParseError as e:
+    print("XML_ERROR:" + str(e))
+    sys.exit(1)
 PYEOF2
 
-    log_ok "$(msg 'Entrees snort supprimees de ossec.conf' 'Snort entries removed from ossec.conf')"
+    # Executer le nettoyage
+    RESULT=$(python3 /tmp/fix_ossec.py "$OSSEC_CONF" 2>&1)
+    if echo "$RESULT" | grep -q "^OK"; then
+        log_ok "$(msg 'ossec.conf nettoye (entrees snort supprimees)'                    'ossec.conf cleaned (snort entries removed)')"
+    else
+        # ossec.conf corrompu — le reinstaller via dpkg
+        log_warn "$(msg 'ossec.conf invalide — reinstallation du paquet Wazuh'                     'Invalid ossec.conf — reinstalling Wazuh package')"
+        DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y             wazuh-manager > /dev/null 2>&1 || true
+        log_ok "$(msg 'Wazuh Manager reinstalle — ossec.conf original restaure'                    'Wazuh Manager reinstalled — original ossec.conf restored')"
+    fi
 
-    # Activer JSON output — simple sed, sans risque
+    # Activer JSON output
     sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
     log_ok "$(msg 'Sortie JSON Wazuh activee' 'Wazuh JSON output enabled')"
-
-    # Verifier que XML est propre
-    if python3 -c "
-import xml.etree.ElementTree as ET, sys
-try:
-    ET.parse('$OSSEC_CONF')
-    print('VALID')
-except Exception as e:
-    print('ERROR:', e)
-    sys.exit(1)
-" 2>/dev/null | grep -q "VALID"; then
-        log_ok "$(msg 'ossec.conf XML valide' 'ossec.conf XML valid')"
-    else
-        # Telecharger un ossec.conf propre depuis Wazuh officiel
-        log_warn "$(msg 'XML invalide — telechargement ossec.conf officiel'                     'Invalid XML — downloading official ossec.conf')"
-        WAZUH_INSTALLED_VER=$(/var/ossec/bin/wazuh-control info 2>/dev/null |             grep WAZUH_VERSION | cut -d= -f2 | tr -d '"' | xargs)
-        [ -z "$WAZUH_INSTALLED_VER" ] && WAZUH_INSTALLED_VER="4.14.4"
-        curl -sL "https://raw.githubusercontent.com/wazuh/wazuh/v${WAZUH_INSTALLED_VER}/etc/ossec.conf"             -o "$OSSEC_CONF" 2>/dev/null || true
-        # Activer JSON sur le nouveau fichier
-        sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'             "$OSSEC_CONF" 2>/dev/null || true
-        log_ok "$(msg 'ossec.conf officiel telecharge et configure'                    'Official ossec.conf downloaded and configured')"
-    fi
 
     # Ajouter wazuh au groupe siem-africa
     usermod -aG "$GROUPE" wazuh 2>/dev/null || true
     log_ok "$(msg 'Utilisateur wazuh ajoute au groupe siem-africa'                'User wazuh added to siem-africa group')"
+
+    rm -f /tmp/fix_ossec.py
 }
 
 # ================================================================
