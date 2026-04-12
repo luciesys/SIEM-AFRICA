@@ -595,58 +595,40 @@ lier_snort_wazuh() {
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
     [ ! -f "$OSSEC_CONF" ] && log_warn "ossec.conf absent" && return
 
-    # Supprimer les entrees snort invalides avec Python3
-    cat > /tmp/fix_ossec.py << 'PYEOF2'
-import sys, re, xml.etree.ElementTree as ET
-
+    # Nettoyer ossec.conf :
+    # 1. Supprimer les blocs localfile contenant snort
+    # 2. Supprimer les blocs localfile vides (sans log_format)
+    python3 - "$OSSEC_CONF" << 'PYEOF2'
+import sys
 path = sys.argv[1]
-content = open(path).read()
-
-# Supprimer toutes les entrees localfile snort
-content = re.sub(
-    r'[ 	]*<localfile>[ 	
-]*<log_format>snort[^<]*</log_format>[ 	
-]*<location>[^<]*</location>[ 	
-]*</localfile>[ 	]*
-?',
-    '',
-    content
-)
-content = re.sub(r'[ 	]*<!--[^
-]*[Ss]nort[^
-]*-->
-?', '', content)
-
-# Tester validite XML
-try:
-    ET.fromstring(content)
-    open(path, "w").write(content)
-    sys.exit(0)
-except ET.ParseError:
-    sys.exit(1)
+lines = open(path).readlines()
+result = []
+i = 0
+while i < len(lines):
+    if '<localfile>' in lines[i]:
+        j = i + 1
+        while j < len(lines) and '</localfile>' not in lines[j]:
+            j += 1
+        block = ''.join(lines[i:j+1])
+        # Supprimer si bloc snort OU bloc vide sans log_format
+        if 'snort' in block.lower() or '<log_format>' not in block:
+            i = j + 1
+            continue
+    result.append(lines[i])
+    i += 1
+open(path, 'w').writelines(result)
+print("OK: " + str(len(result)) + " lignes")
 PYEOF2
 
-    python3 /tmp/fix_ossec.py "$OSSEC_CONF" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        log_ok "$(msg 'ossec.conf nettoye' 'ossec.conf cleaned')"
-    else
-        # ossec.conf trop corrompu — forcer reinstallation avec nouvel ossec.conf
-        log_warn "$(msg 'ossec.conf corrompu — reinstallation forcee'                     'Corrupted ossec.conf — forced reinstall')"
-        # Supprimer l'ancien ossec.conf pour que dpkg en installe un propre
-        rm -f "$OSSEC_CONF"
-        DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y             -o Dpkg::Options::="--force-confmiss"             -o Dpkg::Options::="--force-confnew"             wazuh-manager > /dev/null 2>&1 || true
-        log_ok "$(msg 'ossec.conf original restaure' 'Original ossec.conf restored')"
-    fi
+    log_ok "$(msg 'ossec.conf nettoye (snort + blocs vides supprimes)'                'ossec.conf cleaned (snort + empty blocks removed)')"
 
-    # Activer JSON output — sed simple
+    # Activer JSON output
     sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
     log_ok "$(msg 'Sortie JSON Wazuh activee' 'Wazuh JSON output enabled')"
 
     # Ajouter wazuh au groupe siem-africa
     usermod -aG "$GROUPE" wazuh 2>/dev/null || true
     log_ok "$(msg 'Utilisateur wazuh ajoute au groupe siem-africa'                'User wazuh added to siem-africa group')"
-
-    rm -f /tmp/fix_ossec.py
 }
 
 # ================================================================
