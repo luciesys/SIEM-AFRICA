@@ -593,60 +593,35 @@ lier_snort_wazuh() {
     log_etape "5/7 — $(msg 'LIAISON SNORT ET WAZUH' 'SNORT AND WAZUH LINK')"
 
     OSSEC_CONF="/var/ossec/etc/ossec.conf"
-    [ ! -f "$OSSEC_CONF" ] && log_warn "ossec.conf absent" && return
 
-    # Activer JSON
-    sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
-    log_ok "$(msg 'JSON Wazuh active' 'Wazuh JSON enabled')"
+    if [ ! -f "$OSSEC_CONF" ]; then
+        log_warn "$(msg 'ossec.conf absent' 'ossec.conf not found')"
+        return
+    fi
 
-    # Nettoyer TOUTES les entrees snort existantes puis ajouter snort-fast proprement
-    python3 - "$OSSEC_CONF" << 'PYEOF2'
-import sys, re
-path = sys.argv[1]
-content = open(path).read()
-# Supprimer toutes les entrees snort existantes (quelle que soit la valeur)
-content = re.sub(
-    r'\s*<!--[^>]*[Ss]nort[^>]*-->\s*<localfile>\s*<log_format>[^<]*</log_format>\s*<location>[^<]*snort[^<]*</location>\s*</localfile>',
-    '', content, flags=re.DOTALL
-)
-content = re.sub(
-    r'\s*<localfile>\s*<log_format>snort[^<]*</log_format>\s*<location>[^<]*</location>\s*</localfile>',
-    '', content, flags=re.DOTALL
-)
-# Ajouter UNE SEULE entree avec snort-fast
-block = "
-  <!-- SIEM Africa : Snort IDS -->
-  <localfile>
-    <log_format>snort-fast</log_format>
-    <location>/var/log/snort/alert</location>
-  </localfile>
-
-"
-last = content.rfind("</ossec_config>")
-if last != -1:
-    content = content[:last] + block + content[last:]
-open(path, "w").write(content)
-print("OK")
-PYEOF2
-
-    log_ok "$(msg 'Source Snort (snort-fast) ajoutee dans ossec.conf'                'Snort source (snort-fast) added to ossec.conf')"
-
-    # Verifier XML
-    if python3 -c "
-import xml.etree.ElementTree as ET, sys
-try: ET.parse('$OSSEC_CONF'); print('VALID')
-except Exception as e: print('INVALID:', e); sys.exit(1)
-" 2>/dev/null | grep -q "VALID"; then
-        log_ok "$(msg 'ossec.conf XML valide' 'ossec.conf XML valid')"
-    else
-        log_warn "$(msg 'Erreur XML — restauration backup' 'XML error — restoring backup')"
-        for bak in "${OSSEC_CONF}.dpkg-dist" "${OSSEC_CONF}.dpkg-old" "${OSSEC_CONF}.broken"; do
-            [ -f "$bak" ] && cp "$bak" "$OSSEC_CONF" && break
+    # Si ossec.conf contient deja des entrees snort cassees — restaurer le backup du paquet
+    if grep -q "log_format>snort<" "$OSSEC_CONF" 2>/dev/null; then
+        log_warn "$(msg 'ossec.conf corrompu detecte — restauration...'                     'Corrupted ossec.conf detected — restoring...')"
+        for BAK in "${OSSEC_CONF}.dpkg-dist" "${OSSEC_CONF}.dpkg-old" "${OSSEC_CONF}.broken"; do
+            if [ -f "$BAK" ] && ! grep -q "log_format>snort<" "$BAK"; then
+                cp "$BAK" "$OSSEC_CONF"
+                log_ok "$(msg 'ossec.conf restaure depuis backup' 'ossec.conf restored from backup')"
+                break
+            fi
         done
     fi
 
+    # Activer JSON output — simple sed sur une ligne, sans risque
+    sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
+    log_ok "$(msg 'Sortie JSON Wazuh activee' 'Wazuh JSON output enabled')"
+
+    # Ajouter wazuh au groupe siem-africa
     usermod -aG "$GROUPE" wazuh 2>/dev/null || true
-    log_ok "$(msg 'Wazuh ajoute au groupe siem-africa' 'Wazuh added to siem-africa group')"
+    log_ok "$(msg 'Utilisateur wazuh ajoute au groupe siem-africa'                'User wazuh added to siem-africa group')"
+
+    # NOTE : La lecture des alertes Snort par Wazuh se fait via
+    # /var/ossec/logs/alerts/alerts.json — pas besoin de localfile Snort
+    # L'agent Python (Module 3) lit directement ce fichier JSON
 }
 
 # ================================================================
