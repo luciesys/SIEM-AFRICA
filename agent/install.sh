@@ -2,15 +2,7 @@
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
 #  Fichier  : agent/install.sh
-#  Version  : 3.0
 #  Usage    : sudo bash install.sh
-#
-#  Corrections v3.0 (problemes sessions precedentes) :
-#  - agent.py telecharge automatiquement depuis GitHub si absent
-#  - /opt/siem-africa/agent/ cree avec droits corrects DES LE DEBUT
-#  - siem-agent:siem-africa avec droits precis
-#  - WorkingDirectory verifie avant de creer le service
-#  - Pas de set -e
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
