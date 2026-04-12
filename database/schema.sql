@@ -371,7 +371,7 @@ CREATE VIEW IF NOT EXISTS v_alertes_detail AS
 SELECT
     a.id, a.timestamp_alerte, a.nom_attaque, a.nom_attaque_en,
     a.categorie, a.gravite, a.gravite_label,
-    a.ip_source, a.ip_destination, a.port_destination,
+    a.ip_source, a.ip_destination, a.port_source, a.port_destination,
     a.pays_source, a.mitre_id, a.mitre_tactique, a.mitre_technique,
     a.actions_fr, a.actions_en,
     a.score_confiance, a.est_faux_positif_predit, a.raison_fp_predit,
