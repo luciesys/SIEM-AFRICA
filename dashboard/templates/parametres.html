@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — {% if langue == 'en' %}Settings{% else %}Paramètres{% endif %}{% endblock %}
+{% block page_title %}⚙️ {% if langue == 'en' %}Settings{% else %}Paramètres{% endif %}{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+
+  <!-- Infos système -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>{% if langue == 'en' %}System information{% else %}Informations système{% endif %}</div>
+    <table style="width:100%">
+      <tbody>
+        {% for cle, val in params.items %}
+        <tr>
+          <td style="padding:0.5rem 0;color:var(--text-muted);font-size:0.75rem;font-family:'JetBrains Mono',monospace;border-bottom:1px solid var(--border)">{{ cle }}</td>
+          <td style="padding:0.5rem 0;font-size:0.8rem;border-bottom:1px solid var(--border);text-align:right">
+            {% if 'password' in cle|lower %}
+              <span style="color:var(--text-muted)">••••••••</span>
+            {% else %}
+              {{ val }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Emails de notification -->
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--accent)"></span>{% if langue == 'en' %}Notification emails{% else %}Emails de notification{% endif %}</div>
+    {% for email in emails %}
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1rem">{{ email.est_principal|yesno:"⭐,📧" }}</span>
+      <div style="flex:1">
+        <div style="font-size:0.85rem;font-weight:600">{{ email.email }}</div>
+        <div style="font-size:0.7rem;color:var(--text-muted)">{{ email.nom }} — {% if email.est_actif %}{% if langue == 'en' %}Active{% else %}Actif{% endif %}{% else %}{% if langue == 'en' %}Inactive{% else %}Inactif{% endif %}{% endif %}</div>
+      </div>
+      {% if email.est_actif %}
+      <span class="badge badge-resolu">✓</span>
+      {% else %}
+      <span class="badge" style="background:var(--border);color:var(--text-muted)">✕</span>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div style="color:var(--text-muted);font-size:0.85rem;padding:1rem 0">
+      {% if langue == 'en' %}No notification emails configured.{% else %}Aucun email de notification configuré.{% endif %}<br>
+      <a href="#" style="color:var(--accent)">{% if langue == 'en' %}Run configure_smtp.sh{% else %}Lancer configure_smtp.sh{% endif %}</a>
+    </div>
+    {% endfor %}
+
+    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+      <div class="card-title">{% if langue == 'en' %}SMTP Configuration{% else %}Configuration SMTP{% endif %}</div>
+      <div style="font-size:0.8rem;color:var(--text-muted)">
+        {% if langue == 'en' %}To configure email sending, run on your server:{% else %}Pour configurer l'envoi d'emails, lancez sur votre serveur :{% endif %}
+      </div>
+      <div style="margin-top:0.5rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.875rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--accent)">
+        sudo bash /tmp/install-smtp.sh
+      </div>
+    </div>
+  </div>
+
+  <!-- Services -->
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--faible)"></span>{% if langue == 'en' %}Services status{% else %}État des services{% endif %}</div>
+    {% for svc in "snort,wazuh-manager,siem-agent,siem-dashboard"|split:"," %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem">{{ svc }}</span>
+      <span id="svc-{{ svc }}" class="badge badge-resolu">{% if langue == 'en' %}Active{% else %}Actif{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- A propos -->
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--honeypot)"></span>{% if langue == 'en' %}About{% else %}À propos{% endif %}</div>
+    <div style="text-align:center;padding:1rem">
+      <div style="font-size:2.5rem;margin-bottom:0.75rem">🛡️</div>
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:0.25rem">SIEM Africa</div>
+      <div style="font-size:0.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">v3.0 — Open Source</div>
+      <div style="margin-top:1rem;font-size:0.8rem;color:var(--text-muted)">
+        {% if langue == 'en' %}Cybersecurity for African SMEs{% else %}Cybersécurité pour les PME africaines{% endif %}
+      </div>
+      <a href="https://github.com/luciesys/SIEM-AFRICA"
+         target="_blank"
+         style="display:inline-block;margin-top:0.75rem;color:var(--accent);font-size:0.75rem;font-family:'JetBrains Mono',monospace">
+        github.com/luciesys/SIEM-AFRICA
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

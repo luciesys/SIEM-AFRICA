@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — Whitelist{% endblock %}
+{% block page_title %}✅ Whitelist ({{ ips|length }}){% endblock %}
+
+{% block content %}
+{% if message %}<div class="alert-msg alert-success">{{ message }}</div>{% endif %}
+
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-title"><span class="dot" style="background:var(--faible)"></span>{% if langue == 'en' %}Add trusted IP{% else %}Ajouter une IP de confiance{% endif %}</div>
+  <form method="post" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+    {% csrf_token %}
+    <div>
+      <label class="form-label">IP</label>
+      <input type="text" name="ip" class="form-input" style="width:180px" placeholder="ex: 192.168.1.50" required>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Name{% else %}Nom{% endif %}</label>
+      <input type="text" name="nom" class="form-input" style="width:180px" placeholder="{% if langue == 'en' %}ex: Internal scanner{% else %}ex: Scanner interne{% endif %}" required>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Reason{% else %}Raison{% endif %}</label>
+      <input type="text" name="raison" class="form-input" style="width:200px" placeholder="{% if langue == 'en' %}Optional...{% else %}Optionnel...{% endif %}">
+    </div>
+    <button type="submit" class="btn btn-success">✅ {% if langue == 'en' %}Add{% else %}Ajouter{% endif %}</button>
+  </form>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>{% if langue == 'en' %}Name{% else %}Nom{% endif %}</th>
+        <th>{% if langue == 'en' %}Reason{% else %}Raison{% endif %}</th>
+        <th>{% if langue == 'en' %}Added on{% else %}Ajoutée le{% endif %}</th>
+        <th>{% if langue == 'en' %}By{% else %}Par{% endif %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ip in ips %}
+      <tr>
+        <td class="ip-mono" style="color:var(--faible)">{{ ip.ip }}</td>
+        <td style="font-weight:600">{{ ip.nom }}</td>
+        <td style="color:var(--text-muted);font-size:0.8rem">{{ ip.raison|default:"—" }}</td>
+        <td class="ip-mono" style="font-size:0.75rem">{{ ip.ajoute_le|slice:":16" }}</td>
+        <td style="font-size:0.8rem">{{ ip.ajoute_par_username|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">
+        {% if langue == 'en' %}No trusted IPs yet{% else %}Aucune IP de confiance{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

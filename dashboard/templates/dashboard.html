@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block on_refresh %}
+// Rafraîchir uniquement les stats (pas toute la page)
+fetchStats();
+{% endblock %}
+
+{% block content %}
+<!-- Cartes statistiques -->
+<div class="stats-grid">
+  <div class="stat-card stat-critique" id="sc-critique">
+    <div class="stat-label">🔴 {% if langue == 'en' %}Critical{% else %}Critique{% endif %}</div>
+    <div class="stat-value" id="sv-critique">{{ stats.critique|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Active alerts{% else %}Alertes actives{% endif %}</div>
+  </div>
+  <div class="stat-card stat-haute" id="sc-haute">
+    <div class="stat-label">🟠 {% if langue == 'en' %}High{% else %}Haute{% endif %}</div>
+    <div class="stat-value" id="sv-haute">{{ stats.haute|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Active alerts{% else %}Alertes actives{% endif %}</div>
+  </div>
+  <div class="stat-card stat-moyenne">
+    <div class="stat-label">🟡 {% if langue == 'en' %}Medium{% else %}Moyenne{% endif %}</div>
+    <div class="stat-value" id="sv-moyenne">{{ stats.moyenne|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Active alerts{% else %}Alertes actives{% endif %}</div>
+  </div>
+  <div class="stat-card stat-faible">
+    <div class="stat-label">🟢 {% if langue == 'en' %}Low{% else %}Faible{% endif %}</div>
+    <div class="stat-value" id="sv-faible">{{ stats.faible|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Active alerts{% else %}Alertes actives{% endif %}</div>
+  </div>
+  <div class="stat-card stat-honeypot">
+    <div class="stat-label">🍯 Honeypot</div>
+    <div class="stat-value" id="sv-honeypot">{{ stats.honeypot_24h|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Last 24h{% else %}24 dernières heures{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">📅 {% if langue == 'en' %}Today{% else %}Aujourd'hui{% endif %}</div>
+    <div class="stat-value" id="sv-today" style="color:var(--accent)">{{ stats.aujourd_hui|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}New alerts{% else %}Nouvelles alertes{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">✅ {% if langue == 'en' %}Resolved{% else %}Résolues{% endif %}</div>
+    <div class="stat-value" id="sv-resolues" style="color:var(--faible)">{{ stats.resolues|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Total{% else %}Total{% endif %}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">🤔 FP {% if langue == 'en' %}Predicted{% else %}Prédits{% endif %}</div>
+    <div class="stat-value" id="sv-fp" style="color:var(--moyenne)">{{ stats.fp_predits|default:"0" }}</div>
+    <div class="stat-sub">{% if langue == 'en' %}Probable false positives{% else %}Faux positifs probables{% endif %}</div>
+  </div>
+</div>
+
+<!-- Graphiques ligne 1 -->
+<div class="charts-grid">
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>{% if langue == 'en' %}Alerts — last 7 days{% else %}Alertes — 7 derniers jours{% endif %}</div>
+    <canvas id="chartAlertes7j" height="120"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--haute)"></span>{% if langue == 'en' %}Attack categories{% else %}Catégories d'attaques{% endif %}</div>
+    <canvas id="chartCategories" height="120"></canvas>
+  </div>
+</div>
+
+<!-- Graphiques ligne 2 -->
+<div class="charts-grid">
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--critique)"></span>{% if langue == 'en' %}Alerts by hour (24h){% else %}Alertes par heure (24h){% endif %}</div>
+    <canvas id="chartParHeure" height="120"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--moyenne)"></span>{% if langue == 'en' %}Top suspicious IPs{% else %}Top IPs suspectes{% endif %}</div>
+    <canvas id="chartTopIps" height="120"></canvas>
+  </div>
+</div>
+
+<!-- Alertes récentes -->
+<div class="table-container">
+  <div class="table-header">
+    <div class="table-title">
+      🚨 {% if langue == 'en' %}Recent alerts{% else %}Alertes récentes{% endif %}
+    </div>
+    <a href="{% url 'alertes' %}" class="btn btn-primary btn-sm">
+      {% if langue == 'en' %}View all{% else %}Voir toutes{% endif %} →
+    </a>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>{% if langue == 'en' %}Date{% else %}Date{% endif %}</th>
+        <th>{% if langue == 'en' %}Severity{% else %}Gravité{% endif %}</th>
+        <th>{% if langue == 'en' %}Alert{% else %}Alerte{% endif %}</th>
+        <th>IP Source</th>
+        <th>Machine</th>
+        <th>Score FP</th>
+        <th>{% if langue == 'en' %}Status{% else %}Statut{% endif %}</th>
+      </tr>
+    </thead>
+    <tbody id="alertes-tbody">
+      {% for a in stats.alertes_recentes|default:'' %}
+      <tr>
+        <td class="ip-mono">{{ a.timestamp_alerte|slice:":16" }}</td>
+        <td>
+          {% if a.gravite == 4 %}<span class="badge badge-critique">🔴 {{ a.gravite_label }}</span>
+          {% elif a.gravite == 3 %}<span class="badge badge-haute">🟠 {{ a.gravite_label }}</span>
+          {% elif a.gravite == 2 %}<span class="badge badge-moyenne">🟡 {{ a.gravite_label }}</span>
+          {% else %}<span class="badge badge-faible">🟢 {{ a.gravite_label }}</span>{% endif %}
+          {% if a.est_honeypot %}<span class="badge badge-honeypot">🍯</span>{% endif %}
+        </td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <a href="{% url 'alerte_detail' a.id %}" style="color:var(--text-primary);text-decoration:none;">
+            {{ a.nom_attaque|truncatechars:50 }}
+          </a>
+          {% if a.est_faux_positif_predit %}<span class="badge badge-fp" style="margin-left:0.5rem">FP?</span>{% endif %}
+        </td>
+        <td class="ip-mono">{{ a.ip_source|default:"—" }}</td>
+        <td>{{ a.machine_nom|default:"—" }}</td>
+        <td>
+          <span style="color:{% if a.score_confiance < 40 %}var(--moyenne){% else %}var(--faible){% endif %}">
+            {{ a.score_confiance }}/100
+          </span>
+        </td>
+        <td>
+          {% if a.statut == 'Nouveau' %}<span class="badge badge-nouveau">{{ a.statut }}</span>
+          {% elif a.statut == 'Resolu' %}<span class="badge badge-resolu">{{ a.statut }}</span>
+          {% else %}<span class="badge badge-fp">{{ a.statut }}</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">
+        {% if langue == 'en' %}No alerts yet — system is monitoring{% else %}Aucune alerte pour l'instant — le système surveille{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+<script>
+// Passer les données Django au JS
+document.addEventListener('DOMContentLoaded', () => {
+    initCharts(
+        {{ stats.alertes_7j|default:"[]" }},
+        {{ stats.top_categories|default:"[]" }},
+        {{ stats.top_ips|default:"[]" }},
+        {{ stats.alertes_par_heure|default:"[]" }},
+        '{{ langue }}'
+    );
+});
+</script>
+{% endblock %}

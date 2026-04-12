@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — {% if langue == 'en' %}Alerts{% else %}Alertes{% endif %}{% endblock %}
+{% block page_title %}{% if langue == 'en' %}Alerts{% else %}Alertes{% endif %} ({{ total }}){% endblock %}
+
+{% block content %}
+<!-- Filtres -->
+<div class="card" style="margin-bottom:1rem">
+  <form method="get" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end">
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Severity{% else %}Gravité{% endif %}</label>
+      <select name="gravite" class="form-select" style="width:130px">
+        <option value="">{% if langue == 'en' %}All{% else %}Toutes{% endif %}</option>
+        <option value="4" {% if filtres.gravite == '4' %}selected{% endif %}>🔴 {% if langue == 'en' %}Critical{% else %}Critique{% endif %}</option>
+        <option value="3" {% if filtres.gravite == '3' %}selected{% endif %}>🟠 {% if langue == 'en' %}High{% else %}Haute{% endif %}</option>
+        <option value="2" {% if filtres.gravite == '2' %}selected{% endif %}>🟡 {% if langue == 'en' %}Medium{% else %}Moyenne{% endif %}</option>
+        <option value="1" {% if filtres.gravite == '1' %}selected{% endif %}>🟢 {% if langue == 'en' %}Low{% else %}Faible{% endif %}</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Status{% else %}Statut{% endif %}</label>
+      <select name="statut" class="form-select" style="width:130px">
+        <option value="">{% if langue == 'en' %}All{% else %}Tous{% endif %}</option>
+        <option value="Nouveau" {% if filtres.statut == 'Nouveau' %}selected{% endif %}>{% if langue == 'en' %}New{% else %}Nouveau{% endif %}</option>
+        <option value="Resolu" {% if filtres.statut == 'Resolu' %}selected{% endif %}>{% if langue == 'en' %}Resolved{% else %}Résolu{% endif %}</option>
+        <option value="Faux positif" {% if filtres.statut == 'Faux positif' %}selected{% endif %}>Faux positif</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Category{% else %}Catégorie{% endif %}</label>
+      <select name="categorie" class="form-select" style="width:160px">
+        <option value="">{% if langue == 'en' %}All{% else %}Toutes{% endif %}</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}" {% if filtres.categorie == cat %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label">IP Source</label>
+      <input type="text" name="ip" class="form-input" style="width:150px" value="{{ filtres.ip|default:'' }}" placeholder="ex: 41.202">
+    </div>
+    <div>
+      <label class="form-label">Honeypot</label>
+      <select name="honeypot" class="form-select" style="width:120px">
+        <option value="">{% if langue == 'en' %}All{% else %}Tous{% endif %}</option>
+        <option value="1" {% if filtres.honeypot == '1' %}selected{% endif %}>🍯 Honeypot</option>
+        <option value="0" {% if filtres.honeypot == '0' %}selected{% endif %}>{% if langue == 'en' %}Real{% else %}Réelle{% endif %}</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button type="submit" class="btn btn-primary btn-sm">🔍 {% if langue == 'en' %}Filter{% else %}Filtrer{% endif %}</button>
+      <a href="{% url 'alertes' %}" class="btn btn-sm" style="background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-secondary)">✕</a>
+    </div>
+  </form>
+</div>
+
+<!-- Tableau -->
+<div class="table-container">
+  <div class="table-header">
+    <div class="table-title">{{ total }} {% if langue == 'en' %}alert(s){% else %}alerte(s){% endif %}</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>{% if langue == 'en' %}Date{% else %}Date{% endif %}</th>
+        <th>{% if langue == 'en' %}Severity{% else %}Gravité{% endif %}</th>
+        <th>{% if langue == 'en' %}Alert{% else %}Alerte{% endif %}</th>
+        <th>{% if langue == 'en' %}Category{% else %}Catégorie{% endif %}</th>
+        <th>IP Source</th>
+        <th>MITRE</th>
+        <th>Score</th>
+        <th>{% if langue == 'en' %}Status{% else %}Statut{% endif %}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in alertes %}
+      <tr>
+        <td class="ip-mono" style="color:var(--text-muted)">{{ a.id }}</td>
+        <td class="ip-mono" style="font-size:0.75rem">{{ a.timestamp_alerte|slice:":16" }}</td>
+        <td>
+          {% if a.gravite == 4 %}<span class="badge badge-critique">🔴 {{ a.gravite_label }}</span>
+          {% elif a.gravite == 3 %}<span class="badge badge-haute">🟠 {{ a.gravite_label }}</span>
+          {% elif a.gravite == 2 %}<span class="badge badge-moyenne">🟡 {{ a.gravite_label }}</span>
+          {% else %}<span class="badge badge-faible">🟢 {{ a.gravite_label }}</span>{% endif %}
+          {% if a.est_honeypot %}<span class="badge badge-honeypot" style="margin-top:0.2rem;display:block">🍯 Honeypot</span>{% endif %}
+        </td>
+        <td style="max-width:200px">
+          <a href="{% url 'alerte_detail' a.id %}" style="color:var(--text-primary);text-decoration:none;font-weight:500">
+            {{ a.nom_attaque|truncatechars:45 }}
+          </a>
+          {% if a.est_faux_positif_predit %}<span class="badge badge-fp" style="margin-top:0.2rem;display:block">⚠️ FP probable</span>{% endif %}
+        </td>
+        <td><span style="font-size:0.75rem;color:var(--text-muted)">{{ a.categorie|default:"—" }}</span></td>
+        <td class="ip-mono">{{ a.ip_source|default:"—" }}</td>
+        <td class="ip-mono" style="font-size:0.72rem;color:var(--accent)">{{ a.mitre_id|default:"—" }}</td>
+        <td>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:{% if a.score_confiance < 40 %}var(--moyenne){% elif a.score_confiance > 70 %}var(--critique){% else %}var(--text-secondary){% endif %}">
+            {{ a.score_confiance }}/100
+          </span>
+        </td>
+        <td>
+          {% if a.statut == 'Nouveau' %}<span class="badge badge-nouveau">{{ a.statut }}</span>
+          {% elif a.statut == 'Resolu' %}<span class="badge badge-resolu">✅ {{ a.statut }}</span>
+          {% elif a.statut == 'Faux positif' %}<span class="badge badge-fp">{{ a.statut }}</span>
+          {% else %}<span class="badge">{{ a.statut }}</span>{% endif %}
+        </td>
+        <td>
+          <a href="{% url 'alerte_detail' a.id %}" class="btn btn-primary btn-sm">→</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:3rem">
+        {% if langue == 'en' %}No alerts matching your filters{% else %}Aucune alerte correspondant aux filtres{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="?page={{ page|add:'-1' }}{% if filtres.gravite %}&gravite={{ filtres.gravite }}{% endif %}{% if filtres.statut %}&statut={{ filtres.statut }}{% endif %}" class="page-btn">← {% if langue == 'en' %}Prev{% else %}Préc{% endif %}</a>
+    {% endif %}
+
+    <span style="font-size:0.75rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">
+      {% if langue == 'en' %}Page{% else %}Page{% endif %} {{ page }} / {{ pages }}
+    </span>
+
+    {% if page < pages %}
+    <a href="?page={{ page|add:'1' }}{% if filtres.gravite %}&gravite={{ filtres.gravite }}{% endif %}{% if filtres.statut %}&statut={{ filtres.statut }}{% endif %}" class="page-btn">{% if langue == 'en' %}Next{% else %}Suiv{% endif %} →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

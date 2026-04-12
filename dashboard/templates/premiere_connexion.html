@@ -1,0 +1,96 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="{{ request.session.langue|default:'fr' }}" data-theme="{{ request.session.theme|default:'dark' }}">
+<head>
+<meta charset="UTF-8">
+<title>SIEM Africa — Première connexion</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#0a0e1a; --card:#111827; --border:#2a3a5c; --text:#e8edf5; --muted:#8fa3c0; --accent:#3b82f6; --critique:#ef4444; --moyenne:#eab308; --faible:#22c55e; }
+[data-theme="light"] { --bg:#f0f4f8; --card:#ffffff; --border:#e2e8f0; --text:#0f172a; --muted:#475569; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:'Sora',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1rem; }
+.box { width:100%; max-width:480px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:2rem; box-shadow:0 25px 50px rgba(0,0,0,0.5); }
+.header { text-align:center; margin-bottom:1.5rem; }
+.header h1 { font-size:1.25rem; font-weight:700; margin-bottom:0.5rem; }
+.header p  { font-size:0.8rem; color:var(--muted); }
+
+/* Credentials initiaux */
+.creds-box {
+  background: rgba(59,130,246,0.08);
+  border: 1px solid var(--accent);
+  border-radius:10px; padding:1.25rem;
+  margin-bottom:1.5rem;
+}
+.creds-title { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent); margin-bottom:0.75rem; }
+.cred-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+.cred-label { font-size:0.75rem; color:var(--muted); }
+.cred-value { font-family:'JetBrains Mono',monospace; font-size:0.85rem; color:var(--text); background:rgba(0,0,0,0.2); padding:0.2rem 0.6rem; border-radius:4px; }
+.warning { display:flex; gap:0.5rem; align-items:flex-start; background:rgba(234,179,8,0.1); border:1px solid var(--moyenne); border-radius:8px; padding:0.75rem; margin-bottom:1.5rem; font-size:0.8rem; color:var(--moyenne); }
+
+.form-group { margin-bottom:1rem; }
+.form-label { display:block; font-size:0.7rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.35rem; }
+.form-input { width:100%; padding:0.65rem 0.875rem; background:rgba(59,130,246,0.05); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:0.875rem; font-family:'Sora',sans-serif; transition:border-color 0.2s; }
+.form-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(59,130,246,0.15); }
+.hint { font-size:0.65rem; color:var(--muted); margin-top:0.3rem; font-family:'JetBrains Mono',monospace; }
+
+.btn-submit { width:100%; padding:0.875rem; background:linear-gradient(135deg,#3b82f6,#8b5cf6); color:white; border:none; border-radius:8px; font-size:0.9rem; font-weight:700; cursor:pointer; font-family:'Sora',sans-serif; margin-top:0.5rem; transition:all 0.2s; }
+.btn-submit:hover { opacity:0.9; transform:translateY(-1px); }
+.error-msg { background:rgba(239,68,68,0.12); border:1px solid var(--critique); color:var(--critique); padding:0.75rem; border-radius:8px; font-size:0.8rem; margin-bottom:1rem; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="header">
+    <h1>🔑 {% if request.session.langue == 'en' %}First Login — Change your credentials{% else %}Première connexion — Changez vos identifiants{% endif %}</h1>
+    <p>{% if request.session.langue == 'en' %}For security, you must change the generated credentials{% else %}Pour votre sécurité, vous devez changer les identifiants générés{% endif %}</p>
+  </div>
+
+  {% if init_username or init_password %}
+  <div class="creds-box">
+    <div class="creds-title">🔐 {% if request.session.langue == 'en' %}Your generated credentials (Module 2){% else %}Vos identifiants générés (Module 2){% endif %}</div>
+    {% if init_username %}
+    <div class="cred-row">
+      <span class="cred-label">Username</span>
+      <span class="cred-value">{{ init_username }}</span>
+    </div>
+    {% endif %}
+    {% if init_password %}
+    <div class="cred-row">
+      <span class="cred-label">Password</span>
+      <span class="cred-value">{{ init_password }}</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="warning">
+    ⚠️
+    <span>{% if request.session.langue == 'en' %}These credentials are visible in <code>/opt/siem-africa/credentials.txt</code>. Change them now.{% else %}Ces identifiants sont visibles dans <code>/opt/siem-africa/credentials.txt</code>. Changez-les maintenant.{% endif %}</span>
+  </div>
+
+  {% if error %}<div class="error-msg">⚠️ {{ error }}</div>{% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+      <label class="form-label">{% if request.session.langue == 'en' %}New username{% else %}Nouveau nom d'utilisateur{% endif %}</label>
+      <input type="text" name="username" class="form-input" placeholder="ex: admin_secu" required minlength="6" maxlength="20">
+      <div class="hint">6-20 {% if request.session.langue == 'en' %}chars, letters/numbers/-/_ only{% else %}caractères, lettres/chiffres/-/_ uniquement{% endif %}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">{% if request.session.langue == 'en' %}New password{% else %}Nouveau mot de passe{% endif %}</label>
+      <input type="password" name="password" class="form-input" placeholder="••••••••••••" required minlength="12">
+      <div class="hint">{% if request.session.langue == 'en' %}Min 12 chars, uppercase + lowercase + number + special{% else %}Min 12 caract., maj + min + chiffre + spécial (@#$%&*!){% endif %}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">{% if request.session.langue == 'en' %}Confirm password{% else %}Confirmer le mot de passe{% endif %}</label>
+      <input type="password" name="confirm" class="form-input" placeholder="••••••••••••" required>
+    </div>
+    <button type="submit" class="btn-submit">
+      {% if request.session.langue == 'en' %}Confirm and access dashboard{% else %}Confirmer et accéder au dashboard{% endif %} →
+    </button>
+  </form>
+</div>
+</body>
+</html>

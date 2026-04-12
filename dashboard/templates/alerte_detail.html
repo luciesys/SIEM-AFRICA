@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — {% if langue == 'en' %}Alert{% else %}Alerte{% endif %} #{{ alerte.id }}{% endblock %}
+{% block page_title %}{% if langue == 'en' %}Alert{% else %}Alerte{% endif %} #{{ alerte.id }}{% endblock %}
+
+{% block content %}
+{% if message %}<div class="alert-msg alert-success">{{ message }}</div>{% endif %}
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem">
+  <!-- Colonne gauche -->
+  <div>
+    <!-- Infos principales -->
+    <div class="card" style="margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem">
+        <div>
+          {% if alerte.gravite == 4 %}<span class="badge badge-critique" style="font-size:0.9rem;padding:0.4rem 1rem">🔴 {{ alerte.gravite_label|upper }}</span>
+          {% elif alerte.gravite == 3 %}<span class="badge badge-haute" style="font-size:0.9rem;padding:0.4rem 1rem">🟠 {{ alerte.gravite_label|upper }}</span>
+          {% elif alerte.gravite == 2 %}<span class="badge badge-moyenne" style="font-size:0.9rem;padding:0.4rem 1rem">🟡 {{ alerte.gravite_label|upper }}</span>
+          {% else %}<span class="badge badge-faible" style="font-size:0.9rem;padding:0.4rem 1rem">🟢 {{ alerte.gravite_label|upper }}</span>{% endif %}
+          {% if alerte.est_honeypot %}<span class="badge badge-honeypot" style="font-size:0.9rem;padding:0.4rem 1rem">🍯 HONEYPOT</span>{% endif %}
+        </div>
+        <div style="flex:1">
+          <div style="font-size:1.1rem;font-weight:700">{{ alerte.nom_attaque }}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace">{{ alerte.timestamp_alerte }}</div>
+        </div>
+      </div>
+
+      <!-- Faux positif warning -->
+      {% if alerte.est_faux_positif_predit %}
+      <div class="fp-warning" style="margin-bottom:1rem">
+        ⚠️
+        <div>
+          <strong>{% if langue == 'en' %}Probable false positive{% else %}Faux positif probable{% endif %} — {% if langue == 'en' %}Confidence score{% else %}Score de confiance{% endif %} {{ alerte.score_confiance }}/100</strong><br>
+          <span style="font-size:0.75rem">{{ alerte.raison_fp_predit }}</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Détails réseau -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="form-label">IP Source</div>
+          <div class="ip-mono" style="font-size:1rem;color:var(--critique)">{{ alerte.ip_source|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">IP Destination</div>
+          <div class="ip-mono">{{ alerte.ip_destination|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">{% if langue == 'en' %}Source port{% else %}Port source{% endif %}</div>
+          <div class="ip-mono">{{ alerte.port_source|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">{% if langue == 'en' %}Dest. port{% else %}Port dest.{% endif %}</div>
+          <div class="ip-mono">{{ alerte.port_destination|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">{% if langue == 'en' %}Machine{% else %}Machine{% endif %}</div>
+          <div>{{ alerte.machine_nom|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">{% if langue == 'en' %}Category{% else %}Catégorie{% endif %}</div>
+          <div>{{ alerte.categorie|default:"—" }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions recommandées -->
+    {% if alerte.actions_list %}
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-title"><span class="dot" style="background:var(--faible)"></span>{% if langue == 'en' %}Recommended actions{% else %}Actions recommandées{% endif %}</div>
+      {% for action in alerte.actions_list %}
+      <div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border);font-size:0.85rem">
+        <span style="color:var(--accent);font-weight:700;font-family:'JetBrains Mono',monospace;min-width:20px">{{ forloop.counter }}.</span>
+        <span>{{ action }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Colonne droite -->
+  <div>
+    <!-- MITRE ATT&CK -->
+    {% if alerte.mitre_id %}
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-title"><span class="dot" style="background:var(--accent)"></span>MITRE ATT&CK</div>
+      <div style="margin-bottom:0.75rem">
+        <div class="form-label">ID</div>
+        <div class="ip-mono" style="color:var(--accent);font-size:1rem">{{ alerte.mitre_id }}</div>
+      </div>
+      <div style="margin-bottom:0.75rem">
+        <div class="form-label">{% if langue == 'en' %}Tactic{% else %}Tactique{% endif %}</div>
+        <div style="font-size:0.85rem">{{ alerte.mitre_tactique }}</div>
+      </div>
+      <div>
+        <div class="form-label">{% if langue == 'en' %}Technique{% else %}Technique{% endif %}</div>
+        <div style="font-size:0.85rem">{{ alerte.mitre_technique }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Score confiance -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-title"><span class="dot" style="background:var(--moyenne)"></span>{% if langue == 'en' %}Confidence score{% else %}Score de confiance{% endif %}</div>
+      <div style="text-align:center;padding:1rem 0">
+        <div style="font-size:3rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:{% if alerte.score_confiance < 40 %}var(--moyenne){% elif alerte.score_confiance > 70 %}var(--critique){% else %}var(--accent){% endif %}">
+          {{ alerte.score_confiance }}
+        </div>
+        <div style="font-size:0.8rem;color:var(--text-muted)">/100</div>
+        <div style="margin-top:0.5rem;font-size:0.8rem">
+          {% if alerte.score_confiance < 40 %}
+            <span style="color:var(--moyenne)">⚠️ {% if langue == 'en' %}Probable false positive{% else %}Faux positif probable{% endif %}</span>
+          {% elif alerte.score_confiance > 70 %}
+            <span style="color:var(--critique)">🔴 {% if langue == 'en' %}Probably real{% else %}Probablement réelle{% endif %}</span>
+          {% else %}
+            <span style="color:var(--text-muted)">❓ {% if langue == 'en' %}Uncertain{% else %}Incertain{% endif %}</span>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Barre de score -->
+      <div style="background:var(--bg-secondary);border-radius:4px;height:8px;overflow:hidden">
+        <div style="height:100%;width:{{ alerte.score_confiance }}%;background:{% if alerte.score_confiance < 40 %}var(--moyenne){% elif alerte.score_confiance > 70 %}var(--critique){% else %}var(--accent){% endif %};border-radius:4px;transition:width 1s"></div>
+      </div>
+    </div>
+
+    <!-- Actions admin -->
+    {% if user_role == 'admin_securite' and alerte.statut == 'Nouveau' %}
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--critique)"></span>{% if langue == 'en' %}Actions{% else %}Actions admin{% endif %}</div>
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+          <label class="form-label">{% if langue == 'en' %}Comment{% else %}Commentaire{% endif %}</label>
+          <input type="text" name="commentaire" class="form-input" placeholder="{% if langue == 'en' %}Optional note...{% else %}Note optionnelle...{% endif %}">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.5rem">
+          <button type="submit" name="action" value="resoudre" class="btn btn-success">
+            ✅ {% if langue == 'en' %}Mark resolved{% else %}Marquer résolue{% endif %}
+          </button>
+          <button type="submit" name="action" value="faux_positif" class="btn" style="background:var(--moyenne-bg);color:var(--moyenne);border:1px solid var(--moyenne)">
+            🤔 {% if langue == 'en' %}False positive{% else %}Faux positif{% endif %}
+          </button>
+          {% if alerte.ip_source %}
+          <button type="submit" name="action" value="bloquer_ip" class="btn btn-danger">
+            🔒 {% if langue == 'en' %}Block IP{% else %}Bloquer IP{% endif %} {{ alerte.ip_source }}
+          </button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if alerte.statut != 'Nouveau' %}
+    <div class="card">
+      <div class="card-title">{% if langue == 'en' %}Resolution{% else %}Résolution{% endif %}</div>
+      <div>
+        <div class="form-label">{% if langue == 'en' %}Status{% else %}Statut{% endif %}</div>
+        <span class="badge badge-resolu">{{ alerte.statut }}</span>
+      </div>
+      {% if alerte.resolu_par_username %}
+      <div style="margin-top:0.75rem">
+        <div class="form-label">{% if langue == 'en' %}Resolved by{% else %}Résolu par{% endif %}</div>
+        <div style="font-size:0.85rem">{{ alerte.resolu_par_username }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div style="margin-top:1rem">
+  <a href="{% url 'alertes' %}" class="btn btn-sm" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary)">
+    ← {% if langue == 'en' %}Back to alerts{% else %}Retour aux alertes{% endif %}
+  </a>
+</div>
+{% endblock %}

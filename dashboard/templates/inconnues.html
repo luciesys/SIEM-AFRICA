@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — {% if langue == 'en' %}Unknown alerts{% else %}Alertes inconnues{% endif %}{% endblock %}
+{% block page_title %}❓ {% if langue == 'en' %}Unknown alerts{% else %}Alertes inconnues{% endif %} ({{ alertes|length }}){% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:1rem;background:var(--moyenne-bg);border-color:var(--moyenne)">
+  <div style="font-size:0.85rem;color:var(--moyenne)">
+    ⚠️ {% if langue == 'en' %}These alerts were not matched in the 380-signature database. Enrich them manually to improve future detection.{% else %}Ces alertes n'ont pas été identifiées dans la base de 380 signatures. Enrichissez-les manuellement pour améliorer la détection future.{% endif %}
+  </div>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Rule ID</th>
+        <th>{% if langue == 'en' %}Description{% else %}Description{% endif %}</th>
+        <th>IP Source</th>
+        <th>{% if langue == 'en' %}Occurrences{% else %}Occurrences{% endif %}</th>
+        <th>{% if langue == 'en' %}Last seen{% else %}Dernière fois{% endif %}</th>
+        <th>{% if langue == 'en' %}Status{% else %}Statut{% endif %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in alertes %}
+      <tr>
+        <td class="ip-mono" style="color:var(--accent)">{{ a.rule_id }}</td>
+        <td style="font-size:0.8rem;max-width:300px">{{ a.description|truncatechars:80|default:"—" }}</td>
+        <td class="ip-mono">{{ a.ip_source|default:"—" }}</td>
+        <td>
+          <span class="badge {% if a.nb_occurrences > 10 %}badge-critique{% elif a.nb_occurrences > 3 %}badge-haute{% else %}badge-moyenne{% endif %}">
+            {{ a.nb_occurrences }}×
+          </span>
+        </td>
+        <td class="ip-mono" style="font-size:0.75rem">{{ a.derniere_fois|slice:":16" }}</td>
+        <td>
+          {% if a.enrichie %}
+          <span class="badge badge-resolu">{% if langue == 'en' %}Enriched{% else %}Enrichie{% endif %}</span>
+          {% else %}
+          <span class="badge badge-nouvelle">{% if langue == 'en' %}Pending{% else %}En attente{% endif %}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem">
+        🎉 {% if langue == 'en' %}All alerts are identified — excellent!{% else %}Toutes les alertes sont identifiées — excellent !{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

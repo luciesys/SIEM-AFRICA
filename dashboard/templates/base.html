@@ -1,0 +1,154 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="{{ langue }}" data-theme="{{ theme }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}SIEM Africa{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*/
+</style>
+{% block extra_css %}{% endblock %}
+</head>
+<body>
+
+{% block body %}
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🛡️</div>
+    <div>
+      <div class="logo-text">SIEM Africa</div>
+      <div class="logo-sub">v3.0 — {% if langue == 'en' %}Security Platform{% else %}Plateforme Sécurité{% endif %}</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section">
+      <div class="nav-section-title">{% if langue == 'en' %}Overview{% else %}Vue d'ensemble{% endif %}</div>
+      <a href="{% url 'dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+      </a>
+      <a href="{% url 'alertes' %}" class="nav-item {% if 'alerte' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="nav-icon">🚨</span>
+        <span>{% if langue == 'en' %}Alerts{% else %}Alertes{% endif %}</span>
+      </a>
+    </div>
+
+    {% if user_role == 'admin_securite' %}
+    <div class="nav-section">
+      <div class="nav-section-title">{% if langue == 'en' %}Management{% else %}Gestion{% endif %}</div>
+      <a href="{% url 'ips_bloquees' %}" class="nav-item {% if request.resolver_match.url_name == 'ips_bloquees' %}active{% endif %}">
+        <span class="nav-icon">🔒</span>
+        <span>{% if langue == 'en' %}Blocked IPs{% else %}IPs Bloquées{% endif %}</span>
+      </a>
+      <a href="{% url 'ips_whitelist' %}" class="nav-item {% if request.resolver_match.url_name == 'ips_whitelist' %}active{% endif %}">
+        <span class="nav-icon">✅</span>
+        <span>Whitelist</span>
+      </a>
+      <a href="{% url 'inconnues' %}" class="nav-item {% if request.resolver_match.url_name == 'inconnues' %}active{% endif %}">
+        <span class="nav-icon">❓</span>
+        <span>{% if langue == 'en' %}Unknown{% else %}Inconnues{% endif %}</span>
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">{% if langue == 'en' %}System{% else %}Système{% endif %}</div>
+      <a href="{% url 'parametres' %}" class="nav-item {% if request.resolver_match.url_name == 'parametres' %}active{% endif %}">
+        <span class="nav-icon">⚙️</span>
+        <span>{% if langue == 'en' %}Settings{% else %}Paramètres{% endif %}</span>
+      </a>
+    </div>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user-card">
+      <div class="user-avatar">{{ user_name|slice:":1"|upper }}</div>
+      <div class="user-info">
+        <div class="user-name">{{ user_name }}</div>
+        <div class="user-role">{{ user_role }}</div>
+      </div>
+      <a href="{% url 'logout' %}" class="btn-logout" title="Déconnexion">⏻</a>
+    </div>
+  </div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div>
+      <div class="topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
+      <div class="topbar-sub">
+        <span class="live-dot"></span>
+        {% if langue == 'en' %}Live monitoring — refresh every 30s{% else %}Surveillance en direct — rafraîchissement toutes les 30s{% endif %}
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <!-- Langue -->
+      <div class="lang-toggle">
+        <a href="{% url 'set_lang' %}?lang=fr" class="lang-btn {% if langue == 'fr' %}active{% endif %}">FR</a>
+        <a href="{% url 'set_lang' %}?lang=en" class="lang-btn {% if langue == 'en' %}active{% endif %}">EN</a>
+      </div>
+
+      <!-- Thème -->
+      {% if theme == 'dark' %}
+      <a href="{% url 'set_theme' %}?theme=light" class="btn-icon" title="Mode clair">☀️</a>
+      {% else %}
+      <a href="{% url 'set_theme' %}?theme=dark" class="btn-icon" title="Mode sombre">🌙</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- Contenu -->
+  <div class="content fade-in">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<!-- Barre de progression refresh -->
+<div class="refresh-bar">
+  <div class="refresh-progress" id="refreshProgress"></div>
+</div>
+
+<script>
+// ── Refresh automatique toutes les 30s ────────────────────────
+const REFRESH_INTERVAL = 30000;
+let refreshTimer;
+const progress = document.getElementById('refreshProgress');
+
+function startRefreshTimer() {
+  let start = Date.now();
+  progress.style.transition = `width ${REFRESH_INTERVAL}ms linear`;
+  progress.style.width = '100%';
+
+  refreshTimer = setTimeout(() => {
+    {% block on_refresh %}
+    window.location.reload();
+    {% endblock %}
+  }, REFRESH_INTERVAL);
+}
+
+startRefreshTimer();
+
+// Réinitialiser le timer quand l'utilisateur interagit
+document.addEventListener('click', () => {
+  clearTimeout(refreshTimer);
+  progress.style.transition = 'none';
+  progress.style.width = '0%';
+  setTimeout(startRefreshTimer, 100);
+});
+</script>
+
+{% block extra_js %}{% endblock %}
+{% endblock %}
+
+</body>
+</html>

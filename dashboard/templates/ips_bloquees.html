@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}SIEM Africa — {% if langue == 'en' %}Blocked IPs{% else %}IPs Bloquées{% endif %}{% endblock %}
+{% block page_title %}🔒 {% if langue == 'en' %}Blocked IPs{% else %}IPs Bloquées{% endif %} ({{ ips|length }}){% endblock %}
+
+{% block content %}
+{% if message %}<div class="alert-msg alert-success">{{ message }}</div>{% endif %}
+
+<!-- Bloquer une IP -->
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-title"><span class="dot"></span>{% if langue == 'en' %}Block an IP{% else %}Bloquer une IP{% endif %}</div>
+  <form method="post" style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="bloquer">
+    <div>
+      <label class="form-label">IP</label>
+      <input type="text" name="ip" class="form-input" style="width:180px" placeholder="ex: 41.202.x.x" required>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Type{% else %}Type{% endif %}</label>
+      <select name="type" class="form-select" style="width:140px">
+        <option value="Temporaire">{% if langue == 'en' %}Temporary{% else %}Temporaire{% endif %}</option>
+        <option value="Permanent">{% if langue == 'en' %}Permanent{% else %}Permanent{% endif %}</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Duration (h){% else %}Durée (h){% endif %}</label>
+      <input type="number" name="duree" class="form-input" style="width:100px" placeholder="24" min="1" max="8760">
+    </div>
+    <div>
+      <label class="form-label">{% if langue == 'en' %}Reason{% else %}Raison{% endif %}</label>
+      <input type="text" name="raison" class="form-input" style="width:200px" placeholder="{% if langue == 'en' %}Optional...{% else %}Optionnel...{% endif %}">
+    </div>
+    <button type="submit" class="btn btn-danger">🔒 {% if langue == 'en' %}Block{% else %}Bloquer{% endif %}</button>
+  </form>
+</div>
+
+<!-- Liste -->
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>{% if langue == 'en' %}Type{% else %}Type{% endif %}</th>
+        <th>{% if langue == 'en' %}Reason{% else %}Raison{% endif %}</th>
+        <th>{% if langue == 'en' %}Blocked on{% else %}Bloquée le{% endif %}</th>
+        <th>{% if langue == 'en' %}Expires{% else %}Expire{% endif %}</th>
+        <th>{% if langue == 'en' %}By{% else %}Par{% endif %}</th>
+        <th>{% if langue == 'en' %}Status{% else %}Statut{% endif %}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ip in ips %}
+      <tr>
+        <td class="ip-mono" style="color:var(--critique);font-size:0.9rem">{{ ip.ip }}</td>
+        <td>
+          {% if ip.type_blocage == 'Permanent' %}
+          <span class="badge badge-critique">{{ ip.type_blocage }}</span>
+          {% elif ip.type_blocage == 'Auto' %}
+          <span class="badge badge-honeypot">Auto</span>
+          {% else %}
+          <span class="badge badge-moyenne">{{ ip.type_blocage }}</span>
+          {% endif %}
+        </td>
+        <td style="font-size:0.8rem;color:var(--text-muted)">{{ ip.raison|default:"—" }}</td>
+        <td class="ip-mono" style="font-size:0.75rem">{{ ip.bloque_le|slice:":16" }}</td>
+        <td class="ip-mono" style="font-size:0.75rem">{{ ip.expire_le|slice:":16"|default:"∞" }}</td>
+        <td style="font-size:0.8rem">{{ ip.bloque_par_username|default:"système" }}</td>
+        <td>
+          {% if ip.est_actif %}
+          <span class="badge badge-critique">{% if langue == 'en' %}Active{% else %}Active{% endif %}</span>
+          {% else %}
+          <span class="badge badge-resolu">{% if langue == 'en' %}Lifted{% else %}Levé{% endif %}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if ip.est_actif %}
+          <form method="post" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="debloquer">
+            <input type="hidden" name="ip" value="{{ ip.ip }}">
+            <button type="submit" class="btn btn-success btn-sm">✅ {% if langue == 'en' %}Unblock{% else %}Débloquer{% endif %}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:2rem">
+        {% if langue == 'en' %}No blocked IPs{% else %}Aucune IP bloquée{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
