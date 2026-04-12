@@ -2,472 +2,319 @@
 # ================================================================
 #  SIEM Africa — Module 3 : Agent intelligent
 #  Fichier  : agent/install.sh
-#  Version  : 2.1 — Corrections majeures
-#
-#  Corrections :
-#  [1] ProtectSystem=strict supprime -> causait CHDIR 200
-#  [2] PrivateTmp=yes supprime -> causait CHDIR 200
-#  [3] NoNewPrivileges=yes supprime -> causait CHDIR 200
-#  [4] chmod 755 sur AGENT_DIR (etait 750 -> bloquait CHDIR)
-#  [5] chmod 755 sur /opt/siem-africa/ (dossier parent)
-#  [6] Detection MDP Wazuh : 4 methodes + saisie manuelle
+#  Usage    : sudo bash install.sh
 # ================================================================
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 LOG_FILE="/var/log/siem-africa-install.log"
+OPT_DIR="/opt/siem-africa"
 AGENT_DIR="/opt/siem-africa/agent"
 ENV_FILE="/opt/siem-africa/.env"
 CRED_FILE="/opt/siem-africa/credentials.txt"
-DB_PATH=""
+GROUPE="siem-africa"
 USER_AGENT="siem-agent"
+SERVICE="siem-agent"
+GITHUB_BASE="https://raw.githubusercontent.com/luciesys/SIEM-AFRICA/main"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WAZUH_PASS=""
 
 log()       { echo -e "$1" | tee -a "$LOG_FILE"; }
 log_ok()    { log "${GREEN}[OK]${NC} $1"; }
 log_info()  { log "${CYAN}[INFO]${NC} $1"; }
 log_warn()  { log "${YELLOW}[ATTENTION]${NC} $1"; }
-log_etape() { log "${BLUE}[ETAPE $1]${NC} $2"; }
 log_err()   { log "${RED}[ERREUR]${NC} $1"; }
+log_etape() {
+    log ""
+    log "${BLUE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    log "${BLUE}${BOLD}  ETAPE $1${NC}"
+    log "${BLUE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
 
 quitter() {
-    echo -e "\n${RED}INSTALLATION ARRETEE : $1${NC}"
-    echo "Journal : $LOG_FILE"
+    log_err "$1"
+    echo -e "\n${RED}Installation arretee. Journal : $LOG_FILE${NC}"
     exit 1
 }
 
 show_banner() {
     clear
-    echo -e "${CYAN}"
-    echo "╔══════════════════════════════════════════════════════╗"
-    echo "║       SIEM Africa — Module 3                        ║"
-    echo "║       Agent intelligent v2.1                        ║"
-    echo "╚══════════════════════════════════════════════════════╝"
+    echo -e "${CYAN}${BOLD}"
+    echo "  ╔══════════════════════════════════════════════════════╗"
+    echo "  ║       SIEM Africa — Module 3 v3.0                   ║"
+    echo "  ║       Agent intelligent                             ║"
+    echo "  ╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
-
-# ── Desinstallation propre si deja installe ────────────────────────
-desinstaller_si_present() {
-    local deja_installe=0
-
-    # Verifier si le service existe
-    if systemctl list-unit-files siem-agent.service &>/dev/null 2>&1; then
-        deja_installe=1
-    fi
-    # Verifier si le dossier existe
-    if [ -d "/opt/siem-africa/agent" ]; then
-        deja_installe=1
-    fi
-
-    if [ "$deja_installe" -eq 0 ]; then
-        log_info "Aucune installation precedente detectee — installation normale"
-        return 0
-    fi
-
-    echo ""
-    echo -e "${YELLOW}╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${YELLOW}║  Installation precedente du Module 3 detectee !     ║${NC}"
-    echo -e "${YELLOW}║  Elle va etre supprimee avant reinstallation.       ║${NC}"
-    echo -e "${YELLOW}╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    log_info "Suppression de l'ancienne installation..."
-
-    # Arreter et desactiver le service
-    if systemctl is-active --quiet siem-agent 2>/dev/null; then
-        systemctl stop siem-agent
-        log_ok "Service siem-agent arrete"
-    fi
-    if systemctl is-enabled --quiet siem-agent 2>/dev/null; then
-        systemctl disable siem-agent
-        log_ok "Service siem-agent desactive"
-    fi
-
-    # Supprimer le fichier service
-    if [ -f "/etc/systemd/system/siem-agent.service" ]; then
-        rm -f /etc/systemd/system/siem-agent.service
-        systemctl daemon-reload
-        log_ok "Fichier service supprime"
-    fi
-
-    # Supprimer les fichiers de l'agent
-    if [ -d "/opt/siem-africa/agent" ]; then
-        rm -rf /opt/siem-africa/agent
-        log_ok "Dossier /opt/siem-africa/agent supprime"
-    fi
-
-    # Supprimer les modeles ML
-    if [ -d "/opt/siem-africa/models" ]; then
-        rm -rf /opt/siem-africa/models
-        log_ok "Modeles ML supprimes"
-    fi
-
-    # Archiver les anciens logs (ne pas supprimer — utile pour le debug)
-    if [ -f "/var/log/siem-africa/agent.log" ]; then
-        mv /var/log/siem-africa/agent.log            "/var/log/siem-africa/agent.log.$(date +%Y%m%d_%H%M%S).bak"
-        log_ok "Anciens logs archives"
-    fi
-
-    # Supprimer l'utilisateur systeme
-    if id "siem-agent" &>/dev/null 2>&1; then
-        userdel siem-agent 2>/dev/null || true
-        log_ok "Utilisateur siem-agent supprime"
-    fi
-
-    log_ok "Ancienne installation supprimee — reinstallation en cours..."
-    echo ""
-    sleep 2
-}
-
-# ── Etape 1 : Verifications ───────────────────────────────────────
+# ================================================================
+# ETAPE 1 : Verifications
+# ================================================================
 check_all() {
-    log_etape "1/6" "VERIFICATIONS"
+    log_etape "1/5 — VERIFICATIONS"
 
-    [ "$EUID" -ne 0 ] && quitter "sudo requis"
+    [ "$EUID" -ne 0 ] && quitter "sudo requis — lancez : sudo bash install.sh"
     log_ok "Root confirme"
 
-    [ ! -f "$ENV_FILE" ] && quitter "Module 1 non installe"
+    [ ! -f "$ENV_FILE" ] && quitter "Module 1 non installe — lancez installation/install.sh d'abord"
     log_ok "Module 1 detecte"
 
-    DB_PATH=$(grep "^DB_PATH=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
-    [ -z "$DB_PATH" ] && DB_PATH="/opt/siem-africa/siem_africa.db"
-    [ ! -f "$DB_PATH" ] && quitter "Base SQLite non trouvee — lancez database/install.sh"
-    log_ok "Base SQLite : $DB_PATH"
+    [ ! -f "$OPT_DIR/siem_africa.db" ] && quitter "Module 2 non installe — lancez database/install.sh d'abord"
+    log_ok "Module 2 detecte (base SQLite)"
 
-    NB_SIG=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM attaques;" 2>/dev/null || echo "0")
-    [ "${NB_SIG:-0}" -lt 1 ] && quitter "Table attaques vide"
-    log_ok "Signatures : $NB_SIG"
+    # Python3
+    command -v python3 > /dev/null 2>&1 || quitter "Python3 non installe"
+    PY_VER=$(python3 --version 2>&1 | cut -d' ' -f2)
+    log_ok "Python3 : $PY_VER"
+}
 
-    # Telecharger agent.py automatiquement si absent
-    if [ ! -f "${SCRIPT_DIR}/agent.py" ]; then
-        log_warn "agent.py absent — telechargement automatique..."
-        curl -sL "https://raw.githubusercontent.com/luciesys/SIEM-AFRICA/main/agent/agent.py" \
-             -o "${SCRIPT_DIR}/agent.py" 2>/dev/null || true
-        [ ! -f "${SCRIPT_DIR}/agent.py" ] && quitter "agent.py introuvable"
-        log_ok "agent.py telecharge"
+# ================================================================
+# ETAPE 2 : Trouver ou telecharger agent.py
+# ================================================================
+trouver_agent_py() {
+    log_etape "2/5 — AGENT.PY"
+
+    # Ordre de recherche :
+    # 1. Meme dossier que install.sh (SCRIPT_DIR)
+    # 2. /tmp/agent.py
+    # 3. Telecharger depuis GitHub
+
+    AGENT_PY_SRC=""
+
+    if [ -f "${SCRIPT_DIR}/agent.py" ]; then
+        AGENT_PY_SRC="${SCRIPT_DIR}/agent.py"
+        log_ok "agent.py trouve dans $SCRIPT_DIR"
+
+    elif [ -f "/tmp/agent.py" ]; then
+        AGENT_PY_SRC="/tmp/agent.py"
+        log_ok "agent.py trouve dans /tmp"
+
     else
-        log_ok "agent.py present"
-    fi
+        log_info "agent.py absent — telechargement depuis GitHub..."
+        curl -sL "${GITHUB_BASE}/agent/agent.py" -o /tmp/agent.py 2>/dev/null || \
+        wget -q   "${GITHUB_BASE}/agent/agent.py" -O /tmp/agent.py 2>/dev/null || true
 
-    python3 --version > /dev/null 2>&1 || quitter "Python3 non installe"
-    log_ok "Python3 OK"
-}
-
-# ── Etape 2 : Detection MDP Wazuh (4 methodes) ────────────────────
-detect_wazuh_password() {
-    log_etape "2/6" "DETECTION MOT DE PASSE WAZUH"
-    WAZUH_PASS=""
-
-    # Methode 1 : wazuh-install-files.tar
-    for TAR_PATH in /root/wazuh-install-files.tar /tmp/wazuh-install-files.tar; do
-        if [ -f "$TAR_PATH" ]; then
-            log_info "Lecture $TAR_PATH..."
-            # Format 1
-            WAZUH_PASS=$(tar -xf "$TAR_PATH" -O \
-                wazuh-install-files/wazuh-passwords.txt 2>/dev/null | \
-                grep -A2 "api_username.*wazuh" | grep -i "password" | \
-                grep -oP "(?<=')[^']+(?=')" | head -1)
-            # Format 2
-            if [ -z "$WAZUH_PASS" ]; then
-                tar -xf "$TAR_PATH" -C /tmp \
-                    wazuh-install-files/wazuh-passwords.txt 2>/dev/null || true
-                [ -f "/tmp/wazuh-install-files/wazuh-passwords.txt" ] && \
-                    WAZUH_PASS=$(grep -A2 "api_username.*wazuh" \
-                        /tmp/wazuh-install-files/wazuh-passwords.txt | \
-                        grep -i "password" | grep -oP "(?<=')[^']+(?=')" | head -1)
-            fi
-            [ -n "$WAZUH_PASS" ] && { log_ok "MDP detecte depuis tar"; break; }
-        fi
-    done
-
-    # Methode 2 : deja dans .env
-    if [ -z "$WAZUH_PASS" ]; then
-        WAZUH_PASS=$(grep "^WAZUH_PASSWORD=" "$ENV_FILE" 2>/dev/null | \
-                     cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
-        [ -n "$WAZUH_PASS" ] && log_ok "MDP lu depuis .env"
-    fi
-
-    # Methode 3 : wazuh-passwords.txt direct
-    if [ -z "$WAZUH_PASS" ]; then
-        for PWD_FILE in /root/wazuh-passwords.txt /opt/wazuh-install-files/wazuh-passwords.txt; do
-            [ -f "$PWD_FILE" ] && \
-                WAZUH_PASS=$(grep -A2 "api_username.*wazuh" "$PWD_FILE" | \
-                    grep -i "password" | grep -oP "(?<=')[^']+(?=')" | head -1)
-            [ -n "$WAZUH_PASS" ] && { log_ok "MDP lu depuis $PWD_FILE"; break; }
-        done
-    fi
-
-    # Methode 4 : saisie manuelle
-    if [ -z "$WAZUH_PASS" ]; then
-        echo ""
-        log_warn "MDP Wazuh non detecte automatiquement."
-        echo -n "  Entrez le MDP Wazuh API (Entree pour ignorer) : "
-        read -s WAZUH_PASS_INPUT
-        echo ""
-        if [ -n "$WAZUH_PASS_INPUT" ]; then
-            WAZUH_PASS="$WAZUH_PASS_INPUT"
-            log_ok "MDP saisi manuellement"
+        if [ -f "/tmp/agent.py" ] && grep -q "AgentSIEM\|def demarrer" /tmp/agent.py 2>/dev/null; then
+            AGENT_PY_SRC="/tmp/agent.py"
+            log_ok "agent.py telecharge depuis GitHub"
         else
-            log_warn "MDP non configure — modifiez $ENV_FILE apres installation"
+            quitter "Impossible de trouver agent.py — placez-le dans le meme dossier que install.sh"
         fi
-    fi
-
-    # Sauvegarder
-    if [ -n "$WAZUH_PASS" ]; then
-        if grep -q "^WAZUH_PASSWORD=" "$ENV_FILE"; then
-            sed -i "s|^WAZUH_PASSWORD=.*|WAZUH_PASSWORD=${WAZUH_PASS}|" "$ENV_FILE"
-        else
-            echo "WAZUH_PASSWORD=${WAZUH_PASS}" >> "$ENV_FILE"
-        fi
-        grep -q "^WAZUH_USER=" "$ENV_FILE" && \
-            sed -i "s|^WAZUH_USER=.*|WAZUH_USER=wazuh|" "$ENV_FILE" || \
-            echo "WAZUH_USER=wazuh" >> "$ENV_FILE"
-        log_ok "MDP sauvegarde dans .env"
     fi
 }
 
-# ── Etape 3 : Utilisateur systeme ─────────────────────────────────
-create_user() {
-    log_etape "3/6" "CREATION UTILISATEUR SYSTEME"
+# ================================================================
+# ETAPE 3 : Installation des dependances Python
+# ================================================================
+install_deps() {
+    log_etape "3/5 — DEPENDANCES PYTHON"
+
+    log_info "Mise a jour pip..."
+    python3 -m pip install --upgrade pip --quiet 2>/dev/null || true
+
+    # Pas de dependances externes requises — on utilise uniquement la stdlib Python3
+    # sqlite3, smtplib, email, socket, threading, logging = inclus dans Python3
+    log_ok "Toutes les dependances sont dans la bibliotheque standard Python3"
+    log_ok "Aucune installation pip requise"
+}
+
+# ================================================================
+# ETAPE 4 : Creation utilisateur et installation fichiers
+# ================================================================
+installer_agent() {
+    log_etape "4/5 — INSTALLATION AGENT"
+
+    # Creer l'utilisateur siem-agent
     if id "$USER_AGENT" > /dev/null 2>&1; then
-        log_info "Utilisateur $USER_AGENT existe"
+        log_info "Utilisateur $USER_AGENT existe deja"
     else
-        useradd --system --no-create-home --shell /sbin/nologin \
-                --comment "SIEM Africa Agent" "$USER_AGENT"
+        useradd --system --no-create-home \
+                --shell /sbin/nologin \
+                --gid "$GROUPE" \
+                --comment "SIEM Africa Agent" \
+                "$USER_AGENT"
         log_ok "Utilisateur $USER_AGENT cree"
     fi
-}
+    usermod -aG "$GROUPE" "$USER_AGENT" 2>/dev/null || true
 
-# ── Etape 4 : Dependances Python ──────────────────────────────────
-install_deps() {
-    log_etape "4/6" "DEPENDANCES PYTHON"
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-        python3-pip python3-dev build-essential libssl-dev > /dev/null 2>&1
-    log_ok "Dependances systeme installees"
+    # CORRECTION PROBLEME v2 : Creer AGENT_DIR avec droits corrects DES LE DEBUT
+    # L'erreur "CHDIR status=200" venait de droits insuffisants sur ce dossier
+    mkdir -p "$AGENT_DIR"
+    chown "${USER_AGENT}:${GROUPE}" "$AGENT_DIR"
+    chmod 750 "$AGENT_DIR"
+    log_ok "Dossier $AGENT_DIR cree (chmod 750, proprio $USER_AGENT)"
 
-    pip3 install --quiet scikit-learn numpy --break-system-packages 2>/dev/null || \
-    pip3 install --quiet scikit-learn numpy 2>/dev/null || \
-        log_warn "scikit-learn non installe — ML desactive"
+    # Copier agent.py
+    cp "$AGENT_PY_SRC" "${AGENT_DIR}/agent.py"
+    chown "${USER_AGENT}:${GROUPE}" "${AGENT_DIR}/agent.py"
+    chmod 640 "${AGENT_DIR}/agent.py"
+    log_ok "agent.py installe dans $AGENT_DIR"
 
-    python3 -c "from sklearn.ensemble import IsolationForest" 2>/dev/null && \
-        log_ok "scikit-learn OK — ML actif" || log_warn "ML desactive"
-}
+    # Verifier que agent.py est lisible par siem-agent
+    if sudo -u "$USER_AGENT" test -r "${AGENT_DIR}/agent.py" 2>/dev/null; then
+        log_ok "agent.py lisible par $USER_AGENT"
+    else
+        # Corriger les droits du dossier parent
+        chmod 755 "$OPT_DIR"
+        chmod 750 "$AGENT_DIR"
+        log_warn "Droits corriges sur $OPT_DIR et $AGENT_DIR"
+    fi
 
-# ── Etape 5 : Installation + permissions corrigees ────────────────
-install_agent() {
-    log_etape "5/6" "INSTALLATION DE L'AGENT"
+    # Verifier les droits sur les fichiers necessaires
+    # alerts.json
+    chmod o+r /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+    setfacl -m u:"${USER_AGENT}":r /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
+    log_ok "Acces alerts.json configure pour $USER_AGENT"
 
-    mkdir -p "$AGENT_DIR" /var/log/siem-africa /opt/siem-africa/models
+    # Base SQLite — siem-agent doit pouvoir ecrire
+    chown "${GROUPE}:${GROUPE}" "${OPT_DIR}/siem_africa.db" 2>/dev/null || true
+    chmod 664 "${OPT_DIR}/siem_africa.db" 2>/dev/null || true
+    log_ok "Acces base SQLite configure pour $USER_AGENT"
 
-    # CORRECTION [5] : dossier parent doit etre 755
-    # sinon systemd ne peut pas faire le CHDIR vers agent/
-    chmod 755 /opt/siem-africa/
-    log_ok "chmod 755 /opt/siem-africa/ (correction CHDIR)"
-
-    # Copier l'agent
-    cp "${SCRIPT_DIR}/agent.py" "${AGENT_DIR}/agent.py"
-    log_ok "agent.py copie dans $AGENT_DIR"
-
-    # CORRECTION [4] : 755 au lieu de 750
-    # 750 empechait l'utilisateur siem-agent d'entrer dans le dossier
-    chown -R "${USER_AGENT}:${USER_AGENT}" "$AGENT_DIR"
-    chmod 755 "$AGENT_DIR"
-    chmod 644 "${AGENT_DIR}/agent.py"
-    log_ok "chmod 755 $AGENT_DIR (correction CHDIR)"
+    # .env — lecture seulement
+    chmod 640 "$ENV_FILE" 2>/dev/null || true
+    setfacl -m u:"${USER_AGENT}":r "$ENV_FILE" 2>/dev/null || \
+        chmod o+r "$ENV_FILE" 2>/dev/null || true
+    log_ok "Acces .env configure pour $USER_AGENT"
 
     # Logs
-    chown -R "${USER_AGENT}:${USER_AGENT}" /var/log/siem-africa
-    chmod 755 /var/log/siem-africa
-    touch /var/log/siem-africa/agent.log
-    chown "${USER_AGENT}:${USER_AGENT}" /var/log/siem-africa/agent.log
-    chmod 644 /var/log/siem-africa/agent.log
+    mkdir -p /var/log/siem-africa
+    chown "${USER_AGENT}:${GROUPE}" /var/log/siem-africa
+    chmod 775 /var/log/siem-africa
+    log_ok "Dossier logs configure"
 
-    # Models ML
-    chown -R "${USER_AGENT}:${USER_AGENT}" /opt/siem-africa/models
-    chmod 755 /opt/siem-africa/models
-
-    # SQLite
-    DB_PATH=$(grep "^DB_PATH=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | xargs)
-    [ -z "$DB_PATH" ] && DB_PATH="/opt/siem-africa/siem_africa.db"
-    if [ -f "$DB_PATH" ]; then
-        chown "$(stat -c '%U' "$DB_PATH"):${USER_AGENT}" "$DB_PATH"
-        chmod 664 "$DB_PATH"
-        log_ok "Acces SQLite configure"
-    fi
-
-    # .env
-    chown "root:${USER_AGENT}" "$ENV_FILE"
-    chmod 640 "$ENV_FILE"
-    log_ok "Acces .env configure"
-
-    # Logs Snort
-    if [ -d "/var/log/snort" ]; then
-        setfacl -R -m u:"${USER_AGENT}":rX /var/log/snort 2>/dev/null || \
-            chmod o+rX /var/log/snort 2>/dev/null || true
-
-    # Acces alerts.json Wazuh (lecture directe — plus d'API REST)
-    usermod -aG wazuh "${USER_AGENT}" 2>/dev/null || true
-    mkdir -p /var/ossec/logs/alerts 2>/dev/null || true
-    chmod o+rX /var/ossec/logs/alerts 2>/dev/null || true
-    [ -f /var/ossec/logs/alerts/alerts.json ] && \
-        chmod o+r /var/ossec/logs/alerts/alerts.json 2>/dev/null || true
-    [ -f /var/ossec/etc/client.keys ] && \
-        chmod o+r /var/ossec/etc/client.keys 2>/dev/null || true
-    log_ok "Acces fichiers Wazuh configure (alerts.json)"
-    fi
-
-    # ── Service systemd ───────────────────────────────────────────
-    # CORRECTIONS [1][2][3] :
-    # ProtectSystem=strict, PrivateTmp=yes et NoNewPrivileges=yes
-    # ont ete SUPPRIMES car ils causaient tous l'erreur CHDIR 200.
-    # Ces options empechaient systemd d'acceder a /opt/siem-africa/
-    cat > /etc/systemd/system/siem-agent.service << SYSTEMD
+    # Creer le service systemd
+    # CORRECTION PROBLEME v2 : WorkingDirectory = AGENT_DIR (pas le dossier du script)
+    cat > /etc/systemd/system/${SERVICE}.service << SRVSVC
 [Unit]
-Description=SIEM Africa Agent intelligent v2.1
+Description=SIEM Africa Agent Intelligent v3.0
 Documentation=https://github.com/luciesys/SIEM-AFRICA
-After=network.target wazuh-manager.service snort.service
+After=network.target wazuh-manager.service
 Wants=wazuh-manager.service
 
 [Service]
 Type=simple
 User=${USER_AGENT}
-Group=${USER_AGENT}
+Group=${GROUPE}
 WorkingDirectory=${AGENT_DIR}
 ExecStart=/usr/bin/python3 ${AGENT_DIR}/agent.py
-Restart=on-failure
+Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/siem-africa/agent.log
 StandardError=append:/var/log/siem-africa/agent.log
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
-SYSTEMD
+SRVSVC
 
     systemctl daemon-reload
-    systemctl enable siem-agent
-    log_ok "Service siem-agent cree"
-
-    # Demarrer
-    systemctl stop siem-agent 2>/dev/null || true
-    sleep 1
-    systemctl start siem-agent 2>/dev/null || true
-    sleep 4
-
-    if systemctl is-active --quiet siem-agent; then
-        log_ok "Service siem-agent ACTIF"
-    else
-        log_warn "Service non actif — diagnostic..."
-        _diagnostic
-    fi
+    systemctl enable "$SERVICE" 2>/dev/null || true
+    log_ok "Service $SERVICE configure"
 }
 
-_diagnostic() {
-    echo ""
-    log_info "=== DIAGNOSTIC ==="
-    log_info "Permissions :"
-    ls -la /opt/siem-africa/ 2>/dev/null | tee -a "$LOG_FILE"
-    ls -la "$AGENT_DIR/" 2>/dev/null | tee -a "$LOG_FILE"
+# ================================================================
+# ETAPE 5 : Demarrage et finalisation
+# ================================================================
+demarrer_agent() {
+    log_etape "5/5 — DEMARRAGE ET FINALISATION"
 
-    log_info "Test acces par $USER_AGENT :"
-    if sudo -u "$USER_AGENT" test -r "${AGENT_DIR}/agent.py" 2>/dev/null; then
-        log_ok "agent.py lisible"
-    else
-        log_err "agent.py non lisible — correction..."
-        chmod 644 "${AGENT_DIR}/agent.py"
-        chown "${USER_AGENT}:${USER_AGENT}" "${AGENT_DIR}/agent.py"
-    fi
-
-    log_info "Erreur Python :"
-    timeout 5 sudo -u "$USER_AGENT" \
-        python3 "${AGENT_DIR}/agent.py" 2>&1 | head -5 | tee -a "$LOG_FILE" || true
-
-    systemctl restart siem-agent 2>/dev/null || true
+    # Demarrer le service
+    systemctl start "$SERVICE" 2>/dev/null || true
     sleep 3
-    if systemctl is-active --quiet siem-agent; then
-        log_ok "Service actif apres correction"
+
+    if systemctl is-active --quiet "$SERVICE"; then
+        log_ok "Service $SERVICE : ACTIF"
     else
-        echo ""
-        log_warn "Commandes de diagnostic :"
-        echo "  journalctl -u siem-agent -n 30"
-        echo "  cat /var/log/siem-africa/agent.log"
-        echo ""
-        log_warn "Si MDP Wazuh manquant :"
-        echo "  sudo nano $ENV_FILE"
-        echo "  -> WAZUH_PASSWORD=votre_mdp"
-        echo "  sudo systemctl restart siem-agent"
+        log_warn "Agent non actif — diagnostic :"
+        # Afficher l'erreur precise
+        journalctl -u "$SERVICE" -n 5 --no-pager 2>/dev/null | \
+            grep -v "^--" | tail -5 | while read line; do
+                log_warn "  $line"
+            done
+        log_warn "Verifier les logs : journalctl -u $SERVICE -n 20"
     fi
-    echo ""
-}
 
-# ── Etape 6 : Credentials ─────────────────────────────────────────
-update_credentials() {
-    log_etape "6/6" "CREDENTIALS"
-    WAZUH_PASS_CRED=$(grep "^WAZUH_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | xargs || echo "non configure")
-    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-
+    # Mettre a jour credentials.txt
     cat >> "$CRED_FILE" << CREDS
 
-── MODULE 3 — AGENT INTELLIGENT (v2.1) ──────────────────────
+── MODULE 3 — AGENT INTELLIGENT ─────────────────────────────
   Installe le : $(date '+%d/%m/%Y a %H:%M')
-  Dossier     : ${AGENT_DIR}
-  Logs        : /var/log/siem-africa/agent.log
-  Wazuh API   : https://${SERVER_IP}:55000
-  Wazuh MDP   : ${WAZUH_PASS_CRED}
+  Utilisateur : $USER_AGENT
+  Dossier     : $AGENT_DIR
+  Service     : $SERVICE.service
 
-  Etat        : systemctl status siem-agent
-  Logs live   : tail -f /var/log/siem-africa/agent.log
-  MDP Wazuh   : sudo nano ${ENV_FILE} -> WAZUH_PASSWORD=...
-                sudo systemctl restart siem-agent
+── CONFIGURATION AGENT ───────────────────────────────────────
+  Polling     : $(grep "^POLLING_INTERVAL=" "$ENV_FILE" | cut -d= -f2)s
+  Correlation : $(grep "^CORRELATION_THRESHOLD=" "$ENV_FILE" | cut -d= -f2) alertes / $(grep "^CORRELATION_WINDOW=" "$ENV_FILE" | cut -d= -f2)s
+  Active Resp : Blocage auto apres $(grep "^ACTIVE_RESPONSE_DELAY=" "$ENV_FILE" | cut -d= -f2)s (gravite 4)
+  Honeypot    : SSH:$(grep "^HONEYPOT_SSH_PORT=" "$ENV_FILE" | cut -d= -f2) HTTP:$(grep "^HONEYPOT_HTTP_PORT=" "$ENV_FILE" | cut -d= -f2) MySQL:$(grep "^HONEYPOT_MYSQL_PORT=" "$ENV_FILE" | cut -d= -f2)
+
+── SMTP (A CONFIGURER) ───────────────────────────────────────
+  sudo nano /opt/siem-africa/.env
+  → SMTP_HOST=smtp.gmail.com
+  → SMTP_PORT=587
+  → SMTP_USER=votre@email.com
+  → SMTP_PASSWORD=votre_mot_de_passe_app
+  → ALERT_EMAIL=email_alertes@entreprise.cm
+  sudo systemctl restart siem-agent
+
+── COMMANDES UTILES ──────────────────────────────────────────
+  Status   : systemctl status siem-agent
+  Logs     : tail -f /var/log/siem-africa/agent.log
+  Restart  : sudo systemctl restart siem-agent
+
 CREDS
 
-    chmod 600 "$CRED_FILE"
-    log_ok "credentials.txt mis a jour"
+    chmod 640 "$CRED_FILE"
+
+    # Resume
+    echo ""
+    echo -e "${GREEN}${BOLD}"
+    echo "  ╔══════════════════════════════════════════════════════╗"
+    echo "  ║     MODULE 3 — INSTALLATION TERMINEE                ║"
+    echo "  ╚══════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+
+    echo -e "${CYAN}── SERVICES ─────────────────────────────────────────${NC}"
+    for svc in snort wazuh-manager siem-agent; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            echo -e "  ${GREEN}[ACTIF]${NC}    $svc"
+        else
+            echo -e "  ${YELLOW}[INACTIF]${NC}  $svc"
+        fi
+    done
+
+    echo ""
+    echo -e "${CYAN}── SMTP A CONFIGURER ────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}sudo nano /opt/siem-africa/.env${NC}"
+    echo -e "  Remplir SMTP_USER, SMTP_PASSWORD et ALERT_EMAIL"
+    echo -e "  Puis : ${YELLOW}sudo systemctl restart siem-agent${NC}"
+
+    echo ""
+    echo -e "${CYAN}── LOGS EN DIRECT ───────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}tail -f /var/log/siem-africa/agent.log${NC}"
+
+    echo ""
+    echo -e "${CYAN}── PROCHAINE ETAPE ──────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}Module 4 — Dashboard Django${NC}"
+    echo ""
 }
 
-# ── Resume ────────────────────────────────────────────────────────
-show_summary() {
-    echo ""
-    echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║     MODULE 3 — INSTALLATION TERMINEE                ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    if systemctl is-active --quiet siem-agent; then
-        echo -e "  ${GREEN}[ACTIF]${NC}  siem-agent"
-    else
-        echo -e "  ${RED}[INACTIF]${NC} siem-agent -> journalctl -u siem-agent -n 30"
-    fi
-    WAZUH_PASS_CRED=$(grep "^WAZUH_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 | xargs)
-    if [ -n "$WAZUH_PASS_CRED" ]; then
-        echo -e "  ${GREEN}[OK]${NC}     MDP Wazuh configure"
-    else
-        echo -e "  ${YELLOW}[--]${NC}     MDP Wazuh manquant -> nano $ENV_FILE"
-    fi
-    echo ""
-    python3 -c "import sklearn" 2>/dev/null && \
-        echo -e "  ${GREEN}[OK]${NC} Machine Learning actif" || \
-        echo -e "  ${YELLOW}[--]${NC} ML desactive (pip3 install scikit-learn)"
-    echo ""
-    echo -e "  tail -f /var/log/siem-africa/agent.log"
-    echo ""
-}
-
-# ── MAIN ──────────────────────────────────────────────────────────
+# ================================================================
+# MAIN
+# ================================================================
 main() {
     mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-    echo "=== SIEM Africa Module 3 v2.1 - $(date) ===" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+    echo "=== SIEM Africa Module 3 v3.0 - $(date) ===" >> "$LOG_FILE"
+
     show_banner
-    desinstaller_si_present
     check_all
-    detect_wazuh_password
-    create_user
+    trouver_agent_py
     install_deps
-    install_agent
-    update_credentials
-    show_summary
+    installer_agent
+    demarrer_agent
+
     log_info "Module 3 termine — $(date)"
 }
 
