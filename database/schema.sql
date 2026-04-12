@@ -1,6 +1,7 @@
 -- ================================================================
 --  SIEM Africa — Schema base de donnees SQLite
 --  Fichier  : database/schema.sql
+--  Version  : 2.2 — Refonte complete
 -- ================================================================
 
 PRAGMA foreign_keys = ON;
@@ -404,3 +405,4 @@ INSERT OR IGNORE INTO parametres (cle, valeur, description) VALUES
     ('pwd_tentatives_max',     '5',               'Tentatives avant blocage'),
     ('pwd_blocage_minutes',    '30',              'Duree blocage en minutes'),
     ('langue_defaut',          'fr',              'Langue par defaut'),
+    ('version',                '2.2',             'Version SIEM Africa');
