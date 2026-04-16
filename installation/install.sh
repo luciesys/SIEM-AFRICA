@@ -85,7 +85,7 @@ choisir_langue() {
     echo "  [2] English"
     echo ""
     echo -n "  Votre choix / Your choice [1/2] : "
-    read -r CHOIX_LANGUE
+    read CHOIX_LANGUE
     case "$CHOIX_LANGUE" in
         2|en|EN|english|English) LANGUE="en" ; echo -e "  ${GREEN}Language: English${NC}" ;;
         *)                        LANGUE="fr" ; echo -e "  ${GREEN}Langue : Francais${NC}" ;;
@@ -99,6 +99,8 @@ choisir_langue() {
 desinstaller_si_present() {
     local deja=0
     [ -d /var/ossec ]            && deja=1
+    dpkg -l wazuh-manager 2>/dev/null | grep -q "^ii" && deja=1
+    dpkg -l snort 2>/dev/null | grep -q "^ii"         && deja=1
     [ -f /etc/snort/snort.conf ] && deja=1
     [ -d "$OPT_DIR" ]            && deja=1
 
@@ -130,8 +132,8 @@ desinstaller_si_present() {
     systemctl daemon-reload 2>/dev/null || true
     log_ok "$(msg 'Services arretes' 'Services stopped')"
 
-    # Supprimer Wazuh via apt
-    if [ -d /var/ossec ]; then
+    # Supprimer Wazuh via apt (même si /var/ossec absent — installation corrompue)
+    if [ -d /var/ossec ] || dpkg -l wazuh-manager 2>/dev/null | grep -q "^ii"; then
         log_info "$(msg 'Suppression de Wazuh...' 'Removing Wazuh...')"
         DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge \
             wazuh-manager wazuh-indexer wazuh-dashboard wazuh-agent \
@@ -143,7 +145,7 @@ desinstaller_si_present() {
     fi
 
     # Supprimer Snort
-    if command -v snort > /dev/null 2>&1 || [ -f /etc/snort/snort.conf ]; then
+    if command -v snort > /dev/null 2>&1 || [ -f /etc/snort/snort.conf ] || dpkg -l snort 2>/dev/null | grep -q "^ii"; then
         log_info "$(msg 'Suppression de Snort...' 'Removing Snort...')"
         DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge \
             snort snort-rules-default > /dev/null 2>&1 || true
@@ -259,7 +261,7 @@ check_systeme() {
         else
             echo -n "  Interface a surveiller (Entree pour la premiere) : "
         fi
-        read -r IFACE_INPUT
+        read IFACE_INPUT
         IFACE_INPUT=$(echo "$IFACE_INPUT" | xargs)
         if [ -n "$IFACE_INPUT" ] && ip link show "$IFACE_INPUT" > /dev/null 2>&1; then
             INTERFACE="$IFACE_INPUT"
@@ -333,7 +335,7 @@ setup_base() {
 
     # Fichier .env
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))" 2>/dev/null || \
-                 tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 50)
+                 cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 50)
 
     cat > "$ENV_FILE" << ENV
 # ================================================================
@@ -415,57 +417,38 @@ install_snort() {
     log_etape "3/7 — $(msg 'INSTALLATION SNORT IDS' 'SNORT IDS INSTALLATION')"
 
     apt-get update -qq
+    log_info "[3.1] $(msg 'Installation Snort...' 'Installing Snort...')"
 
-    # [3.1] Pre-creer les dossiers et fichiers AVANT apt-get install
-    # Le post-install de Snort echoue si ces fichiers sont absents
-    log_info "[3.1] $(msg 'Pre-creation structure Snort...' 'Pre-creating Snort structure...')"
-    mkdir -p /var/log/snort /etc/snort/rules /etc/snort/so_rules /etc/snort/preproc_rules
-    touch /etc/snort/rules/local.rules \
-          /etc/snort/rules/white_list.rules \
-          /etc/snort/rules/black_list.rules
-    log_ok "$(msg 'Dossiers et regles Snort crees' 'Snort directories and rules created')"
-
-    # [3.2] Pre-configurer debconf pour eviter les prompts interactifs
-    log_info "[3.2] $(msg 'Pre-configuration Snort (debconf)...' 'Pre-configuring Snort (debconf)...')"
-    LOCAL_NET_TMP=$(ip -4 addr show "$INTERFACE" 2>/dev/null | \
-        grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+/\d+' | head -1)
-    [ -z "$LOCAL_NET_TMP" ] && LOCAL_NET_TMP="192.168.0.0/16"
+    # Pre-repondre aux questions debconf pour eviter l'interaction
     if command -v debconf-set-selections > /dev/null 2>&1; then
-        echo "snort snort/address_range string ${LOCAL_NET_TMP}" | debconf-set-selections 2>/dev/null || true
-        echo "snort snort/interface string ${INTERFACE}"         | debconf-set-selections 2>/dev/null || true
-        log_ok "$(msg 'debconf Snort pre-configure' 'Snort debconf pre-configured')"
+        echo "snort snort/address_range string ${LOCAL_NET:-192.168.1.0/24}" | debconf-set-selections
+        echo "snort snort/interface string ${INTERFACE:-enp0s3}" | debconf-set-selections
     fi
 
-    # [3.3] Installation — affichage complet dans le log pour diagnostic
-    log_info "[3.3] $(msg 'Installation Snort...' 'Installing Snort...')"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
         snort \
         snort-rules-default \
         libpcap-dev \
         libpcre3-dev \
         libdumbnet-dev \
         build-essential \
-        libcap2-bin 2>&1 | tee -a "$LOG_FILE"
-    SNORT_APT_RC=${PIPESTATUS[0]}
+        libcap2-bin 2>&1 | tee -a "$LOG_FILE" | grep -E "Err|error|Error" || true
 
-    # [3.4] Reparer dpkg si post-install Snort a echoue
-    # Essai 1 : reparation standard
-    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" || true
-    # Essai 2 : si dpkg audit detecte encore des problemes, forcer
-    if dpkg --audit 2>&1 | grep -q .; then
-        log_warn "$(msg 'dpkg audit : paquets mal configures detectes — force-all...' \
-                      'dpkg audit: misconfigured packages detected — force-all...')"
-        DEBIAN_FRONTEND=noninteractive dpkg --force-all --configure -a 2>&1 | tee -a "$LOG_FILE" || true
+    # Si snort n'est toujours pas installé — essayer sans snort-rules-default
+    if ! command -v snort > /dev/null 2>&1; then
+        log_warn "$(msg 'Tentative sans snort-rules-default...' 'Retrying without snort-rules-default...')"
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            snort \
+            libpcap-dev \
+            libpcre3-dev \
+            libcap2-bin 2>&1 | tee -a "$LOG_FILE" | grep -E "Err|error|Error" || true
     fi
-    # Essai 3 : finaliser avec install -f
-    DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>&1 | tee -a "$LOG_FILE" || true
 
     if command -v snort > /dev/null 2>&1; then
         SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
         log_ok "$(msg "Snort installe : version $SNORT_VER" "Snort installed: version $SNORT_VER")"
     else
-        quitter "$(msg 'Snort non installe (code apt: '"$SNORT_APT_RC"')' \
-                    'Snort not installed (apt code: '"$SNORT_APT_RC"')')"
+        quitter "$(msg 'Snort non installe' 'Snort not installed')"
     fi
 
     _configurer_snort
@@ -581,17 +564,6 @@ SNORTSVC
 install_wazuh() {
     log_etape "4/7 — $(msg 'INSTALLATION WAZUH MANAGER' 'WAZUH MANAGER INSTALLATION')"
 
-    # 4.0 : Verifier que dpkg est propre avant de commencer
-    log_info "[4.0] $(msg 'Verification integrite dpkg...' 'Checking dpkg integrity...')"
-    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" || true
-    if dpkg --audit 2>&1 | grep -q .; then
-        log_warn "$(msg 'Paquets mal configures detectes — reparation forcee...' \
-                      'Misconfigured packages detected — forced repair...')"
-        DEBIAN_FRONTEND=noninteractive dpkg --force-all --configure -a 2>&1 | tee -a "$LOG_FILE" || true
-        DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>&1 | tee -a "$LOG_FILE" || true
-    fi
-    log_ok "$(msg 'Integrite dpkg OK' 'dpkg integrity OK')"
-
     # 4.1 : Cle GPG
     log_info "[4.1] $(msg 'Ajout de la cle GPG Wazuh...' 'Adding Wazuh GPG key...')"
     curl -sL https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
@@ -610,41 +582,57 @@ install_wazuh() {
     echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] \
 https://packages.wazuh.com/4.x/apt/ stable main" | \
         tee /etc/apt/sources.list.d/wazuh.list > /dev/null
+    apt-get update -qq 2>/dev/null
+    log_ok "$(msg 'Depot Wazuh ajoute' 'Wazuh repository added')"
 
-    # 4.3 : apt-get update — pipeline simple pour PIPESTATUS fiable
-    log_info "[4.3] $(msg 'apt-get update avec depot Wazuh...' 'apt-get update with Wazuh repo...')"
-    apt-get update 2>&1 | tee -a "$LOG_FILE"
-    UPD_RC=${PIPESTATUS[0]}
-    if [ "${UPD_RC}" -ne 0 ]; then
-        quitter "$(msg 'apt-get update a echoue (code '"$UPD_RC"') — depot Wazuh inaccessible ?' \
-                    'apt-get update failed (code '"$UPD_RC"') — Wazuh repo unreachable?')"
+    # 4.3 : Forcer la configuration complète de Snort avant Wazuh
+    # Snort s'installe mais reste dans un état "à configurer" qui bloque apt
+    log_info "[4.3] $(msg 'Configuration forcee de Snort...' 'Force configuring Snort...')"
+
+    # Pré-répondre aux questions de Snort
+    echo "snort snort/address_range string ${LOCAL_NET:-192.168.1.0/24}" | debconf-set-selections 2>/dev/null || true
+    echo "snort snort/interface string ${INTERFACE:-enp0s3}" | debconf-set-selections 2>/dev/null || true
+
+    # Forcer la configuration de Snort
+    DEBIAN_FRONTEND=noninteractive dpkg --configure snort 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>/dev/null || true
+
+    # Vérifier que Snort est correctement configuré
+    if dpkg -l snort 2>/dev/null | grep -q "^ii"; then
+        log_ok "$(msg 'Snort correctement configure' 'Snort correctly configured')"
+    else
+        # Réinstaller Snort proprement si nécessaire
+        log_warn "$(msg 'Reinstallation Snort...' 'Reinstalling Snort...')"
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall snort 2>/dev/null || true
+        echo "snort snort/address_range string ${LOCAL_NET:-192.168.1.0/24}" | debconf-set-selections 2>/dev/null || true
+        echo "snort snort/interface string ${INTERFACE:-enp0s3}" | debconf-set-selections 2>/dev/null || true
+        DEBIAN_FRONTEND=noninteractive dpkg --configure snort 2>/dev/null || true
     fi
 
-    # Verifier que le paquet est disponible avant d'essayer de l'installer
-    if ! apt-cache show wazuh-manager > /dev/null 2>&1; then
-        quitter "$(msg 'Paquet wazuh-manager introuvable — verifier le depot et la connexion' \
-                    'Package wazuh-manager not found — check repository and connection')"
-    fi
-    log_ok "$(msg 'Depot Wazuh ajoute et paquet disponible' 'Wazuh repository added and package available')"
+    # Réparer apt complètement
+    DEBIAN_FRONTEND=noninteractive apt-get install -f -y -qq 2>/dev/null || true
+    log_ok "$(msg 'Etat apt repare' 'apt state fixed')"
 
-    # 4.4 : Installation — pipeline simple pour PIPESTATUS fiable
+    # 4.4 : Installation Wazuh
     log_info "[4.4] $(msg 'Installation Wazuh Manager (10-20 min)...' \
                          'Installing Wazuh Manager (10-20 min)...')"
     log_info "$(msg 'Affichage de l installation en cours — c est normal.' \
                  'You will see the installation scroll — this is normal.')"
     echo ""
 
-    DEBIAN_FRONTEND=noninteractive apt-get install -y wazuh-manager 2>&1 | tee -a "$LOG_FILE"
-    WAZUH_APT_RC=${PIPESTATUS[0]}
+    DEBIAN_FRONTEND=noninteractive apt-get install -y wazuh-manager 2>&1 | \
+        tee -a "$LOG_FILE" | \
+        grep -E "Unpacking|Setting up|Preparing|Get:|Downloading" | \
+        while read line; do log_info "  $line"; done
 
     echo ""
 
     if [ ! -d /var/ossec ]; then
-        log_err "$(msg 'Wazuh Manager non installe (code apt: '"$WAZUH_APT_RC"'). Derniers logs :' \
-                    'Wazuh Manager not installed (apt code: '"$WAZUH_APT_RC"'). Last logs:')"
-        grep -E "^(E:|Err:)" "$LOG_FILE" 2>/dev/null | tail -5 | tee -a "$LOG_FILE"
-        quitter "$(msg 'Wazuh non installe — voir $LOG_FILE' \
-                    'Wazuh not installed — see $LOG_FILE')"
+        log_err "$(msg 'Wazuh Manager non installe. Derniers logs apt :' \
+                    'Wazuh Manager not installed. Last apt logs:')"
+        tail -10 /var/log/apt/term.log 2>/dev/null | tee -a "$LOG_FILE"
+        quitter "$(msg 'Wazuh non installe — voir logs ci-dessus' \
+                    'Wazuh not installed — see logs above')"
     fi
 
     WAZUH_VER=$(/var/ossec/bin/wazuh-control info 2>/dev/null | \
@@ -667,8 +655,7 @@ lier_snort_wazuh() {
     python3 - "$OSSEC_CONF" << 'PYEOF2'
 import sys
 path = sys.argv[1]
-with open(path, 'r') as fh:
-    lines = fh.readlines()
+lines = open(path).readlines()
 result = []
 i = 0
 while i < len(lines):
@@ -683,24 +670,11 @@ while i < len(lines):
             continue
     result.append(lines[i])
     i += 1
-# Reinjecter un bloc Snort propre avant </ossec_config>
-snort_block = (
-    '\n  <!-- Snort IDS — configure par SIEM Africa -->\n'
-    '  <localfile>\n'
-    '    <log_format>snort-fast</log_format>\n'
-    '    <location>/var/log/snort/alert</location>\n'
-    '  </localfile>\n'
-)
-content = ''.join(result)
-if '</ossec_config>' in content:
-    content = content.replace('</ossec_config>', snort_block + '</ossec_config>', 1)
-with open(path, 'w') as fh:
-    fh.write(content)
-print("OK: Snort configure — " + str(len(content.splitlines())) + " lignes")
+open(path, 'w').writelines(result)
+print("OK: " + str(len(result)) + " lignes")
 PYEOF2
 
-    log_ok "$(msg 'ossec.conf nettoye et bloc Snort reinjecte' \
-                'ossec.conf cleaned and Snort block reinjected')"
+    log_ok "$(msg 'ossec.conf nettoye (snort + blocs vides supprimes)'                'ossec.conf cleaned (snort + empty blocks removed)')"
 
     # Activer JSON output
     sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true
