@@ -278,8 +278,10 @@ installer_module1() {
     export SIEM_SERVER_IP="$SERVER_IP"
     export SIEM_NON_INTERACTIF="1"
 
-    bash "$WORK_DIR/m1_install.sh"
+    cd "$WORK_DIR"
+    bash ./m1_install.sh
     local EXIT_CODE=$?
+    cd /tmp
 
     if [ $EXIT_CODE -ne 0 ]; then
         quitter "Le Module 1 a échoué (code $EXIT_CODE). Voir $LOG_FILE"
@@ -314,8 +316,10 @@ installer_module2() {
     export SIEM_SCHEMA_PATH="$WORK_DIR/schema.sql"
     export SIEM_ATTACKS_PATH="$WORK_DIR/attacks.sql"
 
-    bash "$WORK_DIR/m2_install.sh"
+    cd "$WORK_DIR"
+    bash ./m2_install.sh
     local EXIT_CODE=$?
+    cd /tmp
 
     if [ $EXIT_CODE -ne 0 ]; then
         quitter "Le Module 2 a échoué (code $EXIT_CODE). Voir $LOG_FILE"
@@ -340,19 +344,12 @@ installer_module2() {
 installer_module3() {
     debut_etape 3 "Agent intelligent Python + Honeypots"
 
-    log_info "Copie d'agent.py dans /tmp..."
     cp "$WORK_DIR/agent.py" /tmp/agent.py
 
-    log_info "Lancement du script Module 3..."
-    echo ""
-
-    export SIEM_LANGUE="$LANGUE"
-    export SIEM_ORG="$ORG_NOM"
-    export SIEM_ALERT_EMAIL="$ALERT_EMAIL"
-    export SIEM_NON_INTERACTIF="1"
-
-    bash "$WORK_DIR/m3_install.sh"
+    cd "$WORK_DIR"
+    bash ./m3_install.sh
     local EXIT_CODE=$?
+    cd /tmp
 
     if [ $EXIT_CODE -ne 0 ]; then
         quitter "Le Module 3 a échoué (code $EXIT_CODE). Voir $LOG_FILE"
