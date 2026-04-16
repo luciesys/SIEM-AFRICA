@@ -416,19 +416,28 @@ install_snort() {
 
     apt-get update -qq
 
-    # Pre-configurer Snort via debconf pour eviter les prompts interactifs
-    # qui causent un echec du post-install avec DEBIAN_FRONTEND=noninteractive
-    log_info "[3.1] $(msg 'Pre-configuration Snort (debconf)...' 'Pre-configuring Snort (debconf)...')"
+    # [3.1] Pre-creer les dossiers et fichiers AVANT apt-get install
+    # Le post-install de Snort echoue si ces fichiers sont absents
+    log_info "[3.1] $(msg 'Pre-creation structure Snort...' 'Pre-creating Snort structure...')"
+    mkdir -p /var/log/snort /etc/snort/rules /etc/snort/so_rules /etc/snort/preproc_rules
+    touch /etc/snort/rules/local.rules \
+          /etc/snort/rules/white_list.rules \
+          /etc/snort/rules/black_list.rules
+    log_ok "$(msg 'Dossiers et regles Snort crees' 'Snort directories and rules created')"
+
+    # [3.2] Pre-configurer debconf pour eviter les prompts interactifs
+    log_info "[3.2] $(msg 'Pre-configuration Snort (debconf)...' 'Pre-configuring Snort (debconf)...')"
+    LOCAL_NET_TMP=$(ip -4 addr show "$INTERFACE" 2>/dev/null | \
+        grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+/\d+' | head -1)
+    [ -z "$LOCAL_NET_TMP" ] && LOCAL_NET_TMP="192.168.0.0/16"
     if command -v debconf-set-selections > /dev/null 2>&1; then
-        LOCAL_NET_TMP=$(ip -4 addr show "$INTERFACE" 2>/dev/null | \
-            grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+/\d+' | head -1)
-        [ -z "$LOCAL_NET_TMP" ] && LOCAL_NET_TMP="192.168.0.0/16"
         echo "snort snort/address_range string ${LOCAL_NET_TMP}" | debconf-set-selections 2>/dev/null || true
         echo "snort snort/interface string ${INTERFACE}"         | debconf-set-selections 2>/dev/null || true
         log_ok "$(msg 'debconf Snort pre-configure' 'Snort debconf pre-configured')"
     fi
 
-    log_info "[3.2] $(msg 'Installation Snort...' 'Installing Snort...')"
+    # [3.3] Installation — affichage complet dans le log pour diagnostic
+    log_info "[3.3] $(msg 'Installation Snort...' 'Installing Snort...')"
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         snort \
         snort-rules-default \
@@ -436,22 +445,27 @@ install_snort() {
         libpcre3-dev \
         libdumbnet-dev \
         build-essential \
-        libcap2-bin 2>&1 | tee -a "$LOG_FILE" | \
-        grep -E "^(Setting up|Unpacking|Err:|E:)" | \
-        while read -r line; do log_info "  $line"; done
-    APT_RC=${PIPESTATUS[0]}
+        libcap2-bin 2>&1 | tee -a "$LOG_FILE"
+    SNORT_APT_RC=${PIPESTATUS[0]}
 
-    # Reparer dpkg si le post-install Snort a echoue (etat cassé)
-    dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" > /dev/null || true
-    DEBIAN_FRONTEND=noninteractive apt-get install -f -y -qq 2>&1 \
-        | tee -a "$LOG_FILE" > /dev/null || true
+    # [3.4] Reparer dpkg si post-install Snort a echoue
+    # Essai 1 : reparation standard
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" || true
+    # Essai 2 : si dpkg audit detecte encore des problemes, forcer
+    if dpkg --audit 2>&1 | grep -q .; then
+        log_warn "$(msg 'dpkg audit : paquets mal configures detectes — force-all...' \
+                      'dpkg audit: misconfigured packages detected — force-all...')"
+        DEBIAN_FRONTEND=noninteractive dpkg --force-all --configure -a 2>&1 | tee -a "$LOG_FILE" || true
+    fi
+    # Essai 3 : finaliser avec install -f
+    DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>&1 | tee -a "$LOG_FILE" || true
 
     if command -v snort > /dev/null 2>&1; then
         SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
         log_ok "$(msg "Snort installe : version $SNORT_VER" "Snort installed: version $SNORT_VER")"
     else
-        quitter "$(msg 'Snort non installe (code apt: '"$APT_RC"')' \
-                    'Snort not installed (apt code: '"$APT_RC"')')"
+        quitter "$(msg 'Snort non installe (code apt: '"$SNORT_APT_RC"')' \
+                    'Snort not installed (apt code: '"$SNORT_APT_RC"')')"
     fi
 
     _configurer_snort
@@ -567,6 +581,17 @@ SNORTSVC
 install_wazuh() {
     log_etape "4/7 — $(msg 'INSTALLATION WAZUH MANAGER' 'WAZUH MANAGER INSTALLATION')"
 
+    # 4.0 : Verifier que dpkg est propre avant de commencer
+    log_info "[4.0] $(msg 'Verification integrite dpkg...' 'Checking dpkg integrity...')"
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" || true
+    if dpkg --audit 2>&1 | grep -q .; then
+        log_warn "$(msg 'Paquets mal configures detectes — reparation forcee...' \
+                      'Misconfigured packages detected — forced repair...')"
+        DEBIAN_FRONTEND=noninteractive dpkg --force-all --configure -a 2>&1 | tee -a "$LOG_FILE" || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -f -y 2>&1 | tee -a "$LOG_FILE" || true
+    fi
+    log_ok "$(msg 'Integrite dpkg OK' 'dpkg integrity OK')"
+
     # 4.1 : Cle GPG
     log_info "[4.1] $(msg 'Ajout de la cle GPG Wazuh...' 'Adding Wazuh GPG key...')"
     curl -sL https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
@@ -586,9 +611,9 @@ install_wazuh() {
 https://packages.wazuh.com/4.x/apt/ stable main" | \
         tee /etc/apt/sources.list.d/wazuh.list > /dev/null
 
+    # 4.3 : apt-get update — pipeline simple pour PIPESTATUS fiable
     log_info "[4.3] $(msg 'apt-get update avec depot Wazuh...' 'apt-get update with Wazuh repo...')"
-    apt-get update 2>&1 | tee -a "$LOG_FILE" | \
-        grep -E "^(Err:|E:|W:)" | while read -r line; do log_warn "  $line"; done
+    apt-get update 2>&1 | tee -a "$LOG_FILE"
     UPD_RC=${PIPESTATUS[0]}
     if [ "${UPD_RC}" -ne 0 ]; then
         quitter "$(msg 'apt-get update a echoue (code '"$UPD_RC"') — depot Wazuh inaccessible ?' \
@@ -602,17 +627,14 @@ https://packages.wazuh.com/4.x/apt/ stable main" | \
     fi
     log_ok "$(msg 'Depot Wazuh ajoute et paquet disponible' 'Wazuh repository added and package available')"
 
-    # 4.4 : Installation
+    # 4.4 : Installation — pipeline simple pour PIPESTATUS fiable
     log_info "[4.4] $(msg 'Installation Wazuh Manager (10-20 min)...' \
                          'Installing Wazuh Manager (10-20 min)...')"
     log_info "$(msg 'Affichage de l installation en cours — c est normal.' \
                  'You will see the installation scroll — this is normal.')"
     echo ""
 
-    DEBIAN_FRONTEND=noninteractive apt-get install -y wazuh-manager 2>&1 | \
-        tee -a "$LOG_FILE" | \
-        grep -E "Unpacking|Setting up|Preparing|Get:|Downloading|^E:" | \
-        while read -r line; do log_info "  $line"; done
+    DEBIAN_FRONTEND=noninteractive apt-get install -y wazuh-manager 2>&1 | tee -a "$LOG_FILE"
     WAZUH_APT_RC=${PIPESTATUS[0]}
 
     echo ""
