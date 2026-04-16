@@ -7,8 +7,13 @@ import json
 import hashlib
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.conf import settings
+
+try:
+    import bcrypt as _bcrypt
+except ImportError:
+    _bcrypt = None
 
 
 def get_conn():
@@ -47,26 +52,17 @@ def authentifier(username, password):
                 conn.commit()
 
         # Vérifier le mot de passe
-        ok = False
         ph = user['password_hash']
-
-        # Essayer bcrypt d'abord
-        try:
-            import bcrypt
-            ok = bcrypt.checkpw(password.encode(), ph.encode())
-        except Exception:
-            # Fallback SHA-256
+        if _bcrypt is not None:
+            ok = _bcrypt.checkpw(password.encode(), ph.encode())
+        else:
             ok = (hashlib.sha256(password.encode()).hexdigest() == ph)
 
         if not ok:
             tentatives = user['tentatives_echec'] + 1
             bloque_jusqua = None
             if tentatives >= 5:
-                bloque_jusqua = (datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                 if False else
-                                 datetime.fromtimestamp(
-                                     datetime.now().timestamp() + 1800
-                                 ).strftime('%Y-%m-%d %H:%M:%S'))
+                bloque_jusqua = (datetime.now() + timedelta(minutes=30)).strftime('%Y-%m-%d %H:%M:%S')
             cur.execute("""
                 UPDATE utilisateurs
                 SET tentatives_echec=?, bloque_jusqua=?
@@ -121,10 +117,9 @@ def changer_credentials(user_id, new_username, new_password):
             return False, "Mot de passe : au moins 1 caractère spécial (@#$%&*!)"
 
         # Hasher le nouveau MDP
-        try:
-            import bcrypt
-            h = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt(rounds=12)).decode()
-        except ImportError:
+        if _bcrypt is not None:
+            h = _bcrypt.hashpw(new_password.encode(), _bcrypt.gensalt(rounds=12)).decode()
+        else:
             h = hashlib.sha256(new_password.encode()).hexdigest()
 
         cur.execute("""
@@ -260,7 +255,7 @@ def get_alertes(page=1, per_page=20, gravite=None, statut=None,
             where.append("est_honeypot=?"); params.append(1 if honeypot else 0)
 
         where_sql = " AND ".join(where)
-        cur.execute(f"SELECT COUNT(*) as nb FROM alertes WHERE {where_sql}", params)
+        cur.execute(f"SELECT COUNT(*) as nb FROM v_alertes_detail WHERE {where_sql}", params)
         total = (cur.fetchone() or {}).get('nb', 0)
 
         offset = (page - 1) * per_page
@@ -276,7 +271,7 @@ def get_alertes(page=1, per_page=20, gravite=None, statut=None,
         for a in alertes:
             try:
                 a['actions_list'] = json.loads(a.get('actions_fr') or '[]')
-            except:
+            except (json.JSONDecodeError, TypeError):
                 a['actions_list'] = []
 
         return alertes, total, (total + per_page - 1) // per_page
@@ -300,7 +295,7 @@ def get_alerte(alerte_id):
             a['actions_list'] = []
         try:
             a['actions_list_en'] = json.loads(a.get('actions_en') or '[]')
-        except:
+        except (json.JSONDecodeError, TypeError):
             a['actions_list_en'] = []
         return a
     finally:

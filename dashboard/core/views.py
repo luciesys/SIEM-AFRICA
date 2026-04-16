@@ -2,6 +2,7 @@
 SIEM Africa — Vues Django
 """
 import json
+import functools
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -15,6 +16,7 @@ def is_admin(request):
     return request.session.get('user_role') == 'admin_securite'
 
 def login_required(view_func):
+    @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
         if not request.session.get('user_id'):
             return redirect('login')
@@ -22,6 +24,7 @@ def login_required(view_func):
     return wrapper
 
 def admin_required(view_func):
+    @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
         if not request.session.get('user_id'):
             return redirect('login')
@@ -54,7 +57,7 @@ def login_view(request):
     error = None
     if request.method == 'POST':
         username = request.POST.get('username', '').strip()
-        password = request.POST.get('password', '').strip()
+        password = request.POST.get('password', '')
         user, msg = db.authentifier(username, password)
         if user:
             request.session['user_id']   = user['id']

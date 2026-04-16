@@ -14,7 +14,6 @@ ALLOWED_HOSTS = [
     'SERVER_IP_PLACEHOLDER',
     'localhost',
     '127.0.0.1',
-    '*',
 ]
 
 INSTALLED_APPS = [
@@ -67,6 +66,8 @@ SESSION_ENGINE = 'django.contrib.sessions.backends.file'
 SESSION_FILE_PATH = '/tmp/siem-sessions'
 SESSION_COOKIE_AGE = 28800  # 8 heures
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 
 STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
