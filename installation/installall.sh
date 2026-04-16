@@ -415,14 +415,42 @@ install_snort() {
     log_etape "3/7 — $(msg 'INSTALLATION SNORT IDS' 'SNORT IDS INSTALLATION')"
 
     apt-get update -qq
-    log_info "[3.1] $(msg 'Installation Snort...' 'Installing Snort...')"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq         snort         snort-rules-default         libpcap-dev         libpcre3-dev         libdumbnet-dev         build-essential         libcap2-bin > /dev/null 2>&1
+
+    # Pre-configurer Snort via debconf pour eviter les prompts interactifs
+    log_info "[3.1] $(msg 'Pre-configuration Snort (debconf)...' 'Pre-configuring Snort (debconf)...')"
+    if command -v debconf-set-selections > /dev/null 2>&1; then
+        LOCAL_NET_TMP=$(ip -4 addr show "$INTERFACE" 2>/dev/null | \
+            grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+/\d+' | head -1)
+        [ -z "$LOCAL_NET_TMP" ] && LOCAL_NET_TMP="192.168.0.0/16"
+        echo "snort snort/address_range string ${LOCAL_NET_TMP}" | debconf-set-selections 2>/dev/null || true
+        echo "snort snort/interface string ${INTERFACE}"         | debconf-set-selections 2>/dev/null || true
+        log_ok "$(msg 'debconf Snort pre-configure' 'Snort debconf pre-configured')"
+    fi
+
+    log_info "[3.2] $(msg 'Installation Snort...' 'Installing Snort...')"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        snort \
+        snort-rules-default \
+        libpcap-dev \
+        libpcre3-dev \
+        libdumbnet-dev \
+        build-essential \
+        libcap2-bin 2>&1 | tee -a "$LOG_FILE" | \
+        grep -E "^(Setting up|Unpacking|Err:|E:)" | \
+        while read -r line; do log_info "  $line"; done
+    APT_RC=${PIPESTATUS[0]}
+
+    # Reparer dpkg si le post-install Snort a echoue
+    dpkg --configure -a 2>&1 | tee -a "$LOG_FILE" > /dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -f -y -qq 2>&1 \
+        | tee -a "$LOG_FILE" > /dev/null || true
 
     if command -v snort > /dev/null 2>&1; then
         SNORT_VER=$(snort --version 2>&1 | grep -oP '\d+\.\d+\.\d+' | head -1)
         log_ok "$(msg "Snort installe : version $SNORT_VER" "Snort installed: version $SNORT_VER")"
     else
-        quitter "$(msg 'Snort non installe' 'Snort not installed')"
+        quitter "$(msg 'Snort non installe (code apt: '"$APT_RC"')' \
+                    'Snort not installed (apt code: '"$APT_RC"')')"
     fi
 
     _configurer_snort
