@@ -329,7 +329,7 @@ def resoudre_alerte(alerte_id, user_id, commentaire='', est_fp=False):
                 """, (row['ip_source'], row['rule_id'], alerte_id, user_id))
 
         cur.execute("""
-            INSERT INTO actions_admin (admin_id, action, alerte_id, detail, resultat)
+            INSERT INTO actions_admin (admin_id, nom_action, alerte_id, detail, resultat)
             VALUES (?, ?, ?, ?, 'succes')
         """, (user_id, 'resoudre_alerte', alerte_id, statut))
         conn.commit()
@@ -367,7 +367,7 @@ def bloquer_ip_db(ip, type_blocage, user_id, raison='', duree_h=None):
             VALUES (?, ?, ?, ?, datetime('now'), ?, 1)
         """, (ip, type_blocage, user_id, raison, expire))
         cur.execute("""
-            INSERT INTO actions_admin (admin_id, action, ip_cible, detail, resultat)
+            INSERT INTO actions_admin (admin_id, nom_action, ip_cible, detail, resultat)
             VALUES (?, 'bloquer_ip', ?, ?, 'succes')
         """, (user_id, ip, f"{type_blocage} — {raison}"))
         conn.commit()
@@ -382,7 +382,7 @@ def debloquer_ip_db(ip, user_id):
         cur = conn.cursor()
         cur.execute("UPDATE ips_bloquees SET est_actif=0 WHERE ip=?", (ip,))
         cur.execute("""
-            INSERT INTO actions_admin (admin_id, action, ip_cible, resultat)
+            INSERT INTO actions_admin (admin_id, nom_action, ip_cible, resultat)
             VALUES (?, 'debloquer_ip', ?, 'succes')
         """, (user_id, ip))
         conn.commit()

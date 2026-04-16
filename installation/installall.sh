@@ -85,7 +85,7 @@ choisir_langue() {
     echo "  [2] English"
     echo ""
     echo -n "  Votre choix / Your choice [1/2] : "
-    read CHOIX_LANGUE
+    read -r CHOIX_LANGUE
     case "$CHOIX_LANGUE" in
         2|en|EN|english|English) LANGUE="en" ; echo -e "  ${GREEN}Language: English${NC}" ;;
         *)                        LANGUE="fr" ; echo -e "  ${GREEN}Langue : Francais${NC}" ;;
@@ -259,7 +259,7 @@ check_systeme() {
         else
             echo -n "  Interface a surveiller (Entree pour la premiere) : "
         fi
-        read IFACE_INPUT
+        read -r IFACE_INPUT
         IFACE_INPUT=$(echo "$IFACE_INPUT" | xargs)
         if [ -n "$IFACE_INPUT" ] && ip link show "$IFACE_INPUT" > /dev/null 2>&1; then
             INTERFACE="$IFACE_INPUT"
@@ -333,7 +333,7 @@ setup_base() {
 
     # Fichier .env
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))" 2>/dev/null || \
-                 cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 50)
+                 tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 50)
 
     cat > "$ENV_FILE" << ENV
 # ================================================================
@@ -544,7 +544,7 @@ install_wazuh() {
 
     # 4.1 : Telecharger le script officiel Wazuh
     log_info "[4.1] $(msg 'Telechargement du script Wazuh...' 'Downloading Wazuh script...')"
-    WAZUH_URL="https://packages.wazuh.com/4.14/wazuh-install.sh"
+    WAZUH_URL="https://packages.wazuh.com/4.x/wazuh-install.sh"
     curl -sL "$WAZUH_URL" -o /tmp/wazuh-install.sh 2>/dev/null ||     wget -q   "$WAZUH_URL" -O /tmp/wazuh-install.sh 2>/dev/null ||         quitter "$(msg 'Impossible de telecharger le script Wazuh'                     'Cannot download Wazuh script')"
 
     [ ! -f /tmp/wazuh-install.sh ] &&         quitter "$(msg 'Fichier wazuh-install.sh absent' 'wazuh-install.sh file missing')"
@@ -603,7 +603,8 @@ lier_snort_wazuh() {
     python3 - "$OSSEC_CONF" << 'PYEOF2'
 import sys
 path = sys.argv[1]
-lines = open(path).readlines()
+with open(path, 'r') as fh:
+    lines = fh.readlines()
 result = []
 i = 0
 while i < len(lines):
@@ -618,11 +619,24 @@ while i < len(lines):
             continue
     result.append(lines[i])
     i += 1
-open(path, 'w').writelines(result)
-print("OK: " + str(len(result)) + " lignes")
+# Reinjecter un bloc Snort propre avant </ossec_config>
+snort_block = (
+    '\n  <!-- Snort IDS — configure par SIEM Africa -->\n'
+    '  <localfile>\n'
+    '    <log_format>snort-fast</log_format>\n'
+    '    <location>/var/log/snort/alert</location>\n'
+    '  </localfile>\n'
+)
+content = ''.join(result)
+if '</ossec_config>' in content:
+    content = content.replace('</ossec_config>', snort_block + '</ossec_config>', 1)
+with open(path, 'w') as fh:
+    fh.write(content)
+print("OK: Snort configure — " + str(len(content.splitlines())) + " lignes")
 PYEOF2
 
-    log_ok "$(msg 'ossec.conf nettoye (snort + blocs vides supprimes)'                'ossec.conf cleaned (snort + empty blocks removed)')"
+    log_ok "$(msg 'ossec.conf nettoye et bloc Snort reinjecte' \
+                'ossec.conf cleaned and Snort block reinjected')"
 
     # Activer JSON output
     sed -i 's|<jsonout_output>no</jsonout_output>|<jsonout_output>yes</jsonout_output>|g'         "$OSSEC_CONF" 2>/dev/null || true

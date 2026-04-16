@@ -150,10 +150,21 @@ install_deps() {
     log_info "Mise a jour pip..."
     python3 -m pip install --upgrade pip --quiet 2>/dev/null || true
 
-    # Pas de dependances externes requises — on utilise uniquement la stdlib Python3
     # sqlite3, smtplib, email, socket, threading, logging = inclus dans Python3
-    log_ok "Toutes les dependances sont dans la bibliotheque standard Python3"
-    log_ok "Aucune installation pip requise"
+    log_ok "Bibliotheque standard Python3 presente"
+
+    # bcrypt — requis pour le hachage fort des mots de passe
+    if ! python3 -c "import bcrypt" 2>/dev/null; then
+        log_info "Installation bcrypt..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            python3-bcrypt > /dev/null 2>&1 || \
+        python3 -m pip install bcrypt --quiet 2>/dev/null || true
+    fi
+    if python3 -c "import bcrypt" 2>/dev/null; then
+        log_ok "bcrypt installe"
+    else
+        log_warn "bcrypt absent — fallback SHA-256 actif (moins securise)"
+    fi
 }
 
 # ================================================================
@@ -238,8 +249,8 @@ WorkingDirectory=${AGENT_DIR}
 ExecStart=/usr/bin/python3 ${AGENT_DIR}/agent.py
 Restart=always
 RestartSec=10
-StandardOutput=null
-StandardError=null
+StandardOutput=append:/var/log/siem-africa/agent.log
+StandardError=append:/var/log/siem-africa/agent.log
 
 [Install]
 WantedBy=multi-user.target
@@ -258,7 +269,7 @@ demarrer_agent() {
 
     # Demarrer le service
     systemctl start "$SERVICE" 2>/dev/null || true
-    sleep 3
+    sleep 5
 
     if systemctl is-active --quiet "$SERVICE"; then
         log_ok "Service $SERVICE : ACTIF"

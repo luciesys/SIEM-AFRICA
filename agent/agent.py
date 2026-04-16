@@ -24,6 +24,7 @@ import logging
 import subprocess
 import threading
 import socket
+import ipaddress
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -208,7 +209,7 @@ def ip_en_whitelist(ip):
         result = cur.fetchone()
         conn.close()
         return result is not None
-    except:
+    except Exception:
         return False
 
 def get_emails_alertes():
@@ -220,7 +221,7 @@ def get_emails_alertes():
         emails = [row["email"] for row in cur.fetchall()]
         conn.close()
         return emails
-    except:
+    except Exception:
         return []
 
 def get_nb_faux_positifs_ip(ip):
@@ -237,7 +238,7 @@ def get_nb_faux_positifs_ip(ip):
         row = cur.fetchone()
         conn.close()
         return row["nb"] if row else 0
-    except:
+    except Exception:
         return 0
 
 def get_nb_alertes_ip_24h(ip):
@@ -255,7 +256,7 @@ def get_nb_alertes_ip_24h(ip):
         row = cur.fetchone()
         conn.close()
         return row["nb"] if row else 0
-    except:
+    except Exception:
         return 0
 
 def signature_fp_frequente(rule_id):
@@ -269,7 +270,7 @@ def signature_fp_frequente(rule_id):
         row = cur.fetchone()
         conn.close()
         return row and row["fp_frequence"] == 1
-    except:
+    except Exception:
         return False
 
 # ================================================================
@@ -390,7 +391,7 @@ def envoyer_email(config, alerte):
 
     try:
         actions = json.loads(alerte.get("actions_fr", "[]"))
-    except:
+    except (json.JSONDecodeError, TypeError):
         actions = []
 
     # Icone gravite
@@ -500,6 +501,12 @@ def enregistrer_notification(alerte_id, email, statut, erreur=None):
 def bloquer_ip(ip, duree_sec=300):
     """Bloquer une IP via iptables (gravite 4 uniquement)"""
     if not ip or ip in ("127.0.0.1", "::1"):
+        return False
+    # Valider que c'est bien une IP avant de passer a iptables
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        log.error(f"Tentative de blocage d'une IP invalide ignoree : {ip!r}")
         return False
     try:
         # Ajouter la regle iptables
@@ -622,7 +629,7 @@ class Honeypot:
                     # Fermer la connexion
                     try:
                         conn.close()
-                    except:
+                    except Exception:
                         pass
 
                 except Exception as e:
@@ -739,7 +746,7 @@ class AgentSIEM:
             try:
                 actions_fr = json.loads(sig["actions_fr"] or "[]")
                 actions_en = json.loads(sig["actions_en"] or "[]")
-            except:
+            except (json.JSONDecodeError, TypeError):
                 actions_fr = []
                 actions_en = []
 
@@ -806,7 +813,9 @@ class AgentSIEM:
         alerte["est_correllee"] = est_cor
         if est_cor:
             log.info(f"Alerte correlee : {rule_id} depuis {ip}")
-            return  # Ne pas notifier les alertes correlees
+            # Sauvegarder quand meme pour conserver la trace, mais sans notifier
+            sauver_alerte(alerte)
+            return
 
         # Sauvegarder
         alerte_id = sauver_alerte(alerte)
@@ -837,6 +846,39 @@ class AgentSIEM:
                 bloquer_ip(ip, 3600)
             threading.Thread(target=bloquer_apres_delai, daemon=True).start()
 
+    def _debloquer_ips_expirees(self):
+        """Au demarrage : debloquer les IPs dont expire_le est passe (survivent aux redemarrages)"""
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ip FROM ips_bloquees
+                WHERE est_actif = 1
+                  AND expire_le IS NOT NULL
+                  AND expire_le <= datetime('now')
+            """)
+            rows = cur.fetchall()
+            conn.close()
+            for row in rows:
+                ip = row["ip"]
+                log.info(f"Deblocage au demarrage (expiration passee) : {ip}")
+                try:
+                    subprocess.run(
+                        ["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"],
+                        capture_output=True, timeout=10
+                    )
+                except Exception:
+                    pass
+                try:
+                    c = get_db()
+                    c.execute("UPDATE ips_bloquees SET est_actif=0 WHERE ip=?", (ip,))
+                    c.commit()
+                    c.close()
+                except Exception as e:
+                    log.error(f"Erreur DB deblocage {ip}: {e}")
+        except Exception as e:
+            log.error(f"Erreur _debloquer_ips_expirees: {e}")
+
     def demarrer(self):
         """Boucle principale de l'agent"""
         log.info("=" * 60)
@@ -846,6 +888,9 @@ class AgentSIEM:
         log.info(f"  Active Response : gravite 4 → blocage apres {self.config['ACTIVE_RESPONSE_DELAY']}s")
         log.info(f"  Honeypot : {self.config.get('HONEYPOT_ENABLED','1') == '1'}")
         log.info("=" * 60)
+
+        # Debloquer les IPs dont l'expiration est passee (survie aux redemarrages)
+        self._debloquer_ips_expirees()
 
         # Demarrer le honeypot dans des threads separes
         self.honeypot.demarrer()

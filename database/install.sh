@@ -36,13 +36,16 @@ log()       { echo -e "$1" | tee -a "$LOG_FILE"; }
 log_ok()    { log "${GREEN}[OK]${NC} $1"; }
 log_info()  { log "${CYAN}[INFO]${NC} $1"; }
 log_warn()  { log "${YELLOW}[ATTENTION]${NC} $1"; }
-log_etape() { log "\n${BLUE}━━━ ETAPE $1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
+log_etape() { log "\n${BLUE}━━━ ETAPE $1 — $2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
 
 quitter() {
     echo -e "\n${RED}ARRETE : $1${NC}"
     echo "Journal : $LOG_FILE"
     exit 1
 }
+
+# Echapper les single quotes pour SQLite (x → x'')
+sql_esc() { printf "%s" "$1" | sed "s/'/''/g"; }
 
 show_banner() {
     clear
@@ -89,6 +92,19 @@ check_all() {
     fi
     command -v sqlite3 > /dev/null 2>&1 || quitter "sqlite3 non installe"
     log_ok "sqlite3 : $(sqlite3 --version | awk '{print $1}')"
+
+    # bcrypt — requis pour hasher le mot de passe admin avec un algorithme fort
+    if ! python3 -c "import bcrypt" 2>/dev/null; then
+        log_info "Installation bcrypt..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+            python3-bcrypt > /dev/null 2>&1 || \
+        python3 -m pip install bcrypt --quiet 2>/dev/null || true
+    fi
+    if python3 -c "import bcrypt" 2>/dev/null; then
+        log_ok "bcrypt installe (hachage fort)"
+    else
+        log_warn "bcrypt absent — fallback SHA-256 (moins securise)"
+    fi
 
     # schema.sql et attacks.sql
     [ ! -f "${SCRIPT_DIR}/schema.sql" ]  && quitter "schema.sql introuvable dans $SCRIPT_DIR"
@@ -159,21 +175,24 @@ create_database() {
     log_ok "Signatures chargees : $NB_SIG"
 
     # Mettre a jour le parametre organisation
+    ORG_NOM_S=$(sql_esc "$ORG_NOM")
     sqlite3 "$DB_PATH" \
-        "UPDATE parametres SET valeur='${ORG_NOM}' WHERE cle='organisation_nom';" 2>/dev/null || true
+        "UPDATE parametres SET valeur='${ORG_NOM_S}' WHERE cle='organisation_nom';" 2>/dev/null || true
 
     # Inserer l'email principal
+    EMAIL_S=$(sql_esc "$EMAIL_PRINCIPAL")
     sqlite3 "$DB_PATH" "
         INSERT OR IGNORE INTO emails_alertes (email, nom, est_actif, est_principal)
-        VALUES ('${EMAIL_PRINCIPAL}', 'Email principal', 1, 1);
+        VALUES ('${EMAIL_S}', 'Email principal', 1, 1);
     " 2>/dev/null
     log_ok "Email principal enregistre : $EMAIL_PRINCIPAL"
 
     # Inserer les emails supplementaires
     for email in "${EMAILS_SUPP[@]}"; do
+        EMAIL_SUP_S=$(sql_esc "$email")
         sqlite3 "$DB_PATH" "
             INSERT OR IGNORE INTO emails_alertes (email, nom, est_actif, est_principal)
-            VALUES ('${email}', 'Email supplementaire', 1, 0);
+            VALUES ('${EMAIL_SUP_S}', 'Email supplementaire', 1, 0);
         " 2>/dev/null
         log_ok "Email supplementaire enregistre : $email"
     done
@@ -219,6 +238,10 @@ except ImportError:
     fi
 
     # Inserer l'admin dans la base
+    USR_S=$(sql_esc "$ADMIN_USERNAME")
+    HSH_S=$(sql_esc "$HASH")
+    EML_S=$(sql_esc "$EMAIL_PRINCIPAL")
+    ORG_S=$(sql_esc "$ORG_NOM")
     sqlite3 "$DB_PATH" "
         INSERT INTO utilisateurs
             (username, password_hash, role, email_alertes, langue,
@@ -226,11 +249,11 @@ except ImportError:
              pwd_expire_le, pwd_change_le, historique_pwd,
              tentatives_echec, organisation, cree_le)
         VALUES
-            ('${ADMIN_USERNAME}', '${HASH}', 'admin_securite',
-             '${EMAIL_PRINCIPAL}', 'fr',
+            ('${USR_S}', '${HSH_S}', 'admin_securite',
+             '${EML_S}', 'fr',
              1, 1,
              datetime('now', '+90 days'), datetime('now'), '[]',
-             0, '${ORG_NOM}', datetime('now'));
+             0, '${ORG_S}', datetime('now'));
     " 2>/dev/null
 
     NB=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM utilisateurs;" 2>/dev/null || echo "0")
